@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  valkey:
+    image: valkey/valkey:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file: ./backend/.env
+    depends_on:
+      valkey:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build: ./backend
+    env_file: ./backend/.env
+    depends_on:
+      valkey:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: celery -A app.services.multi_process.tasks.celery_app worker --loglevel=info --concurrency=4
+    volumes:
+      - ./backend:/app
+
+  celery_flower:
+    build: ./backend
+    env_file: ./backend/.env
+    ports:
+      - "5555:5555"
+    depends_on:
+      - celery_worker
+    command: celery -A app.services.multi_process.tasks.celery_app flower --port=5555
