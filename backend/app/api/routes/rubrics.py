@@ -1,21 +1,38 @@
 """
 rubrics.py
-POST /api/rubrics/  – professor creates a custom rubric
-GET  /api/rubrics/  – list rubrics
-GET  /api/rubrics/{id} – retrieve single rubric
+POST /api/rubrics/  – professor/admin creates a custom rubric
+GET  /api/rubrics/  – list rubrics           (any authenticated user)
+GET  /api/rubrics/{id} – retrieve single     (any authenticated user)
 """
 from __future__ import annotations
 import uuid
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+# Ensure these match your project structure
+from app.core.dependencies import CurrentUser, require_auth, require_roles
 from app.core.supabase import get_supabase
 from app.schemas.grading import RubricCreateRequest
+from app.schemas.auth import AccessTokenPayload  # Correct import
+from app.core.dependencies import require_roles
 
 router = APIRouter(prefix="/rubrics", tags=["rubrics"])
 
+# We define the dependency once
+role_guard = require_roles(["professor", "admin"])
+
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_rubric(payload: RubricCreateRequest):
+async def create_rubric(
+    payload: RubricCreateRequest, 
+    # Use the function call directly as the default value. 
+    # Because require_roles returns a Depends object, 
+    # FastAPI handles this correctly.
+    user: AccessTokenPayload = require_roles(["professor", "admin"])
+):
+    """
+    Creates a new rubric. 
+    'user' is automatically validated by the role_guard dependency.
+    """
     total_weight = sum(d.weight for d in payload.dimensions.values())
     if not (0.99 <= total_weight <= 1.01):
         raise HTTPException(
@@ -27,6 +44,7 @@ async def create_rubric(payload: RubricCreateRequest):
     get_supabase().table("rubrics").insert(
         {
             "id": rubric_id,
+            "professor_id": user.sub,
             "name": payload.name,
             "grading_mode": payload.grading_mode.value,
             "criteria": {
@@ -38,13 +56,13 @@ async def create_rubric(payload: RubricCreateRequest):
     return {"rubric_id": rubric_id}
 
 
-@router.get("/")
+@router.get("/", dependencies=[require_auth])
 async def list_rubrics():
     rows = get_supabase().table("rubrics").select("id, name, grading_mode").execute()
     return rows.data or []
 
 
-@router.get("/{rubric_id}")
+@router.get("/{rubric_id}", dependencies=[require_auth])
 async def get_rubric(rubric_id: str):
     row = (
         get_supabase()

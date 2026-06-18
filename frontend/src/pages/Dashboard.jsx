@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
 import { useAssignmentStore } from '../store/assignmentStore';
-
+import Navbar from '../components/Navbar';
 const ACCEPTED_TYPES = {
   'application/pdf': ['.pdf'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
@@ -36,8 +36,8 @@ export default function Dashboard() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file || !subject) return;
-    await submitAssignment(file, subject, gradingSystem, null);
-    navigate('/results');
+    const result = await submitAssignment(file, subject, gradingSystem, null);
+    if (result?.ok) navigate('/results');
   };
 
   const isProcessing = uploading || status === 'pending' || status === 'processing';

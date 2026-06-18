@@ -1,10 +1,15 @@
 """
-main.py – FastAPI application factory.
+main.py – FastAPI application entry point.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import assignments, rubrics, analytics
+# Explicitly import the router objects from their respective files
+from app.api.routes.assignments import router as assignments_router
+from app.api.routes.rubrics import router as rubrics_router
+from app.api.routes.analytics import router as analytics_router
+from app.api.routes.auth import router as auth_router
+
 from app.core.config import settings
 
 app = FastAPI(
@@ -23,10 +28,11 @@ app.add_middleware(
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(assignments.router, prefix="/api")
-app.include_router(rubrics.router, prefix="/api")
-app.include_router(analytics.router, prefix="/api")
-
+# We use the explicit router objects imported above.
+app.include_router(auth_router, prefix="/api", tags=["auth"])
+app.include_router(assignments_router, prefix="/api", tags=["assignments"])
+app.include_router(rubrics_router, prefix="/api", tags=["rubrics"])
+app.include_router(analytics_router, prefix="/api", tags=["analytics"])
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health", tags=["ops"])

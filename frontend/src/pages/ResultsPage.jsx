@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAssignmentStore } from '../store/assignmentStore';
+import Navbar from '../components/Navbar';
 
 // Grade colour mapping
 const US_COLORS = { A: 'green', B: 'blue', C: 'yellow', D: 'orange', F: 'red' };
