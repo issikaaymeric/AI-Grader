@@ -26,10 +26,11 @@ async function safeJson(res) {
   try {
     return JSON.parse(text);
   } catch {
-    // Backend returned HTML (e.g. 500 page) — surface the HTTP status instead
     return { detail: `Server error ${res.status}: ${res.statusText}` };
   }
 }
+
+const PAGE_SIZE = 10;
 
 export const useAssignmentStore = create((set, get) => ({
   uploading: false,
@@ -38,7 +39,43 @@ export const useAssignmentStore = create((set, get) => ({
   status: null,
   result: null,
 
-  submitAssignment: async (file, subject, gradingSystem, rubricId) => {
+  // ── History (My Grades page) ────────────────────────────────────────────
+  history: [],
+  historyTotal: 0,
+  historyLoading: false,
+  historyError: null,
+
+  fetchHistory: async ({ limit = 20, offset = 0, statusFilter = null } = {}) => {
+    set({ historyLoading: true, historyError: null });
+    try {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (statusFilter) params.set('status_filter', statusFilter);
+
+      const res = await authFetch(`/api/assignments/?${params.toString()}`);
+      const data = await safeJson(res);
+
+      if (!res.ok) throw new Error(parseDetail(data.detail));
+
+      set({
+        history: data.items ?? [],
+        historyTotal: data.total ?? 0,
+        historyLoading: false,
+      });
+      return { ok: true };
+    } catch (err) {
+      set({ historyLoading: false, historyError: err.message });
+      return { ok: false };
+    }
+  },
+
+  /**
+   * @param {File} file
+   * @param {string} subject
+   * @param {'US'|'UK'} gradingSystem
+   * @param {string|null} rubricId
+   * @param {string|null} instructions  Free-text assignment brief from the instructor
+   */
+  submitAssignment: async (file, subject, gradingSystem, rubricId, instructions) => {
     set({ uploading: true, uploadError: null, result: null, status: null });
 
     const form = new FormData();
@@ -46,6 +83,7 @@ export const useAssignmentStore = create((set, get) => ({
     form.append('subject', subject);
     form.append('grading_system', gradingSystem);
     if (rubricId) form.append('rubric_id', rubricId);
+    if (instructions) form.append('instructions', instructions);
 
     try {
       const res = await authFetch('/api/assignments/', { method: 'POST', body: form });
@@ -61,6 +99,56 @@ export const useAssignmentStore = create((set, get) => ({
     } catch (err) {
       set({ uploading: false, uploadError: err.message });
       return { ok: false };
+    }
+  },
+
+  /** Loads a single past assignment's result into state, then ResultsPage renders it. */
+  loadAssignment: async (assignmentId) => {
+    set({ uploading: false, uploadError: null, result: null, status: 'processing' });
+    try {
+      const res = await authFetch(`/api/assignments/${assignmentId}`);
+      const data = await safeJson(res);
+
+      if (!res.ok) throw new Error(parseDetail(data.detail));
+
+      set({
+        currentAssignmentId: assignmentId,
+        status: data.status,
+        result: data.result ?? null,
+      });
+
+      if (data.status === 'pending' || data.status === 'processing') {
+        get()._startPolling(assignmentId);
+      }
+      return { ok: true };
+    } catch (err) {
+      set({ status: 'error', uploadError: err.message });
+      return { ok: false };
+    }
+  },
+
+  deleteAssignment: async (assignmentId) => {
+    // Optimistic removal
+    set((s) => ({
+      history: s.history.filter((a) => a.id !== assignmentId),
+      historyTotal: Math.max(0, s.historyTotal - 1),
+    }));
+
+    try {
+      const res = await authFetch(`/api/assignments/${assignmentId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const data = await safeJson(res);
+        throw new Error(parseDetail(data.detail));
+      }
+
+      return { ok: true };
+    } catch (err) {
+      // Re-fetch to restore state on failure
+      get().fetchHistory({ limit: PAGE_SIZE, offset: 0 });
+      return { ok: false, error: err.message };
     }
   },
 

@@ -43,6 +43,7 @@ def grade_assignment(
     subject: str,
     grading_system: str,
     rubric_dict: dict | None,
+    instructions: str | None = None,
 ) -> dict:
     """
     Heavy lifting happens here, off the request thread.
@@ -65,6 +66,7 @@ def grade_assignment(
             grading_system=system,
             rubric=rubric,
             assignment_id=assignment_id,
+            instructions=instructions,
         )
 
         result_dict = result.model_dump()

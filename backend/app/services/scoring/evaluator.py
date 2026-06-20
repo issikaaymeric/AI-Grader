@@ -5,7 +5,6 @@ parses structured JSON output, and assembles a GradingResult.
 """
 from __future__ import annotations
 
-import json
 import logging
 import textwrap
 import uuid
@@ -30,12 +29,18 @@ logger = logging.getLogger(__name__)
 # ── Prompt construction ──────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = textwrap.dedent("""
-You are an expert academic evaluator with 20 years of experience assessing
+You are an expert academic evaluator with 30 years of experience assessing
 student work at university level. Your evaluations are:
   - Evidence-based: you quote specific sentences from the submission.
   - Bias-free: you do not consider student identity, writing dialect, or style preferences.
   - Constructive: you balance critical feedback with actionable improvement advice.
   - Consistent: you apply the rubric identically across all submissions.
+  - Instruction-aware: you grade against what the assignment actually asked for,
+    not just generic dimension descriptions. If the submission ignores or
+    misunderstands the assignment instructions, this must be reflected in the
+    Content and Argumentation scores.
+  - Actionable: every weakness you identify comes with a concrete next step the
+    student can act on, not just a description of the problem.
 
 You MUST respond ONLY with a valid JSON object — no preamble, no markdown fences.
 """).strip()
@@ -46,6 +51,7 @@ def _build_user_prompt(
     rubric: Rubric,
     system: GradingSystem,
     subject: str,
+    instructions: str | None = None,
 ) -> str:
     weights = rubric.effective_weights(system)
     mode_label = (
@@ -62,12 +68,39 @@ def _build_user_prompt(
         for dim, cfg in rubric.dimensions.items()
     )
 
+    has_instructions = bool(instructions and instructions.strip())
+    instructions_block = (
+        textwrap.dedent(f"""
+        ASSIGNMENT INSTRUCTIONS (set by the instructor — grade against this)
+        ----------------------------------------------------------------
+        {instructions.strip()}
+        """).strip()
+        if has_instructions
+        else (
+            "ASSIGNMENT INSTRUCTIONS\n"
+            "------------------------\n"
+            "No specific instructions were provided. Grade generally against "
+            "the rubric dimensions and standard academic expectations for "
+            f"a {subject} assignment."
+        )
+    )
+
+    instructions_alignment_field = (
+        '      "instructions_alignment": '
+        '"1-2 sentences on whether the submission addressed the assignment brief, '
+        'and what (if anything) it missed.",\n'
+        if has_instructions
+        else '      "instructions_alignment": null,\n'
+    )
+
     return textwrap.dedent(f"""
     GRADING TASK
     ============
     Subject     : {subject}
     System      : {system.value} ({mode_label})
     Rubric Name : {rubric.name}
+
+    {instructions_block}
 
     RUBRIC DIMENSIONS
     -----------------
@@ -79,25 +112,38 @@ def _build_user_prompt(
     ---------------
     {submission[:12000]}  ← [truncated to 12 000 chars if longer]
 
-    INSTRUCTIONS
-    ------------
-    Evaluate the submission step-by-step using chain-of-thought reasoning.
+    INSTRUCTIONS FOR YOU (the evaluator)
+    -------------------------------------
+    First, check the submission against the ASSIGNMENT INSTRUCTIONS above —
+    does it actually do what was asked? Note any gaps in your chain of thought.
+
+    Then evaluate the submission step-by-step using chain-of-thought reasoning.
     For EACH dimension:
       1. Identify 2-4 direct quotes (≤30 words each) from the submission
          that illustrate performance on that dimension.
-      2. Score the dimension 0-100.
+      2. Score the dimension 0-100, factoring in alignment with the
+         assignment instructions.
       3. Write a 2-3 sentence evaluation citing those quotes.
 
     Then:
+      - Write a ONE-SENTENCE summary capturing the overall verdict
+        (e.g. "A well-evidenced argument let down by inconsistent structure").
       - Compute a weighted aggregate score using the weights above.
       - Identify Strengths, Weaknesses, Opportunities, Threats (SWOT).
+        Each item should be specific to THIS submission, not generic advice.
+      - Write 2-4 ranked next_steps: concrete, actionable instructions the
+        student can follow to improve their NEXT submission, ordered by
+        expected impact (highest-impact first). Each should be one sentence,
+        specific, and tied to something observed in this submission.
       - Write an anchored_feedback narrative (3-5 paragraphs) that cites
-        specific passages.
+        specific passages and notes whether the assignment instructions
+        were fully addressed.
 
     REQUIRED JSON SCHEMA (respond with this exact structure):
     {{
       "chain_of_thought": ["step1 reasoning ...", "step2 ..."],
-      "dimension_scores": {{
+      "summary": "One-sentence overall verdict.",
+{instructions_alignment_field}      "dimension_scores": {{
         "<dim_name>": {{
           "score": <0-100>,
           "evidence": ["quote1", "quote2"],
@@ -110,6 +156,7 @@ def _build_user_prompt(
         "opportunities": ["..."],
         "threats": ["..."]
       }},
+      "next_steps": ["Most impactful action first.", "Second action.", "..."],
       "anchored_feedback": "Full narrative feedback with inline quotes..."
     }}
     """).strip()
@@ -125,7 +172,6 @@ def _assemble_result(
 ) -> GradingResult:
     weights = rubric.effective_weights(system)
 
-    # Build DimensionScore objects
     dim_scores: dict[str, DimensionScore] = {}
     raw_scores: dict[str, float] = {}
 
@@ -142,10 +188,8 @@ def _assemble_result(
             chain_of_thought=data.get("chain_of_thought", ""),
         )
 
-    # Aggregate score
     final_score = apply_grading_mode(raw_scores, weights, rubric.grading_mode.value)
 
-    # SWOT
     swot_raw = raw_llm.get("swot", {})
     swot = SWOTAnalysis(
         strengths=swot_raw.get("strengths", []),
@@ -159,9 +203,13 @@ def _assemble_result(
         grading_system=system,
         raw_score=final_score,
         letter_grade=map_grade(final_score, system),
+        summary=raw_llm.get("summary", "").strip()
+        or "No summary was generated for this submission.",
         dimension_scores=dim_scores,
         swot=swot,
         anchored_feedback=raw_llm.get("anchored_feedback", ""),
+        next_steps=raw_llm.get("next_steps", []),
+        instructions_alignment=raw_llm.get("instructions_alignment"),
         flag_for_review=is_borderline(final_score, system),
         chain_of_thought=raw_llm.get("chain_of_thought", []),
     )
@@ -175,10 +223,11 @@ def evaluate(
     grading_system: GradingSystem,
     rubric: Rubric,
     assignment_id: str | None = None,
+    instructions: str | None = None,
 ) -> GradingResult:
     """
     Full evaluation pipeline:
-      1. Build chain-of-thought prompt.
+      1. Build chain-of-thought prompt (with optional assignment instructions).
       2. Call LLM (with provider fallback + retry via llm_client).
       3. Parse JSON response.
       4. Assemble and return GradingResult.
@@ -186,11 +235,13 @@ def evaluate(
     if assignment_id is None:
         assignment_id = str(uuid.uuid4())
 
-    user_prompt = _build_user_prompt(submission_text, rubric, grading_system, subject)
+    user_prompt = _build_user_prompt(
+        submission_text, rubric, grading_system, subject, instructions
+    )
 
     logger.info(
-        "Evaluating assignment=%s system=%s rubric=%s",
-        assignment_id, grading_system.value, rubric.name,
+        "Evaluating assignment=%s system=%s rubric=%s has_instructions=%s",
+        assignment_id, grading_system.value, rubric.name, bool(instructions),
     )
 
     raw_llm = call_llm_json(_SYSTEM_PROMPT, user_prompt)

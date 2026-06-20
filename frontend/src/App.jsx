@@ -4,6 +4,7 @@ import { useAuthStore } from "./store/authStore";
 import Navbar from "./components/Navbar";
 import Dashboard from "./pages/Dashboard";
 import ResultsPage from "./pages/ResultsPage";
+import MyGradesPage from "./pages/MyGradesPage";
 import LoginPage from "./auth/LoginPage";
 import RegisterPage from "./auth/RegisterPage";
 
@@ -32,6 +33,7 @@ export default function App() {
 
         <Route path="/"       element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/results" element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
+        <Route path="/grades"  element={<ProtectedRoute><MyGradesPage /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,6 +1,5 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -85,9 +84,12 @@ class GradingResult(BaseModel):
     grading_system: GradingSystem
     raw_score: float                          # 0-100
     letter_grade: str                         # US: A-F  |  UK: First / 2:1 …
+    summary: str                              # One-sentence takeaway of overall performance
     dimension_scores: dict[str, DimensionScore]
     swot: SWOTAnalysis
     anchored_feedback: str                    # Narrative with inline quotes
+    next_steps: list[str]                     # Concrete, actionable improvements (ranked)
+    instructions_alignment: str | None = None # Did the submission address the brief? (None if no instructions given)
     flag_for_review: bool
     chain_of_thought: list[str]               # Step-by-step log
 
@@ -95,9 +97,15 @@ class GradingResult(BaseModel):
 # ── API request/response wrappers ──────────────────────────────────────────
 
 class AssignmentSubmitRequest(BaseModel):
+    """
+    Mirrors the multipart form fields accepted by POST /api/assignments/.
+    Not used directly as a FastAPI body (the route uses Form(...) fields
+    because of the file upload), but documents the expected shape.
+    """
     subject: str
     grading_system: GradingSystem
-    rubric_id: str | None = None              # None → use default rubric
+    instructions: str | None = None    # Free-text assignment brief from the instructor
+    rubric_id: str | None = None       # None → use default rubric
 
 
 class AssignmentStatusResponse(BaseModel):

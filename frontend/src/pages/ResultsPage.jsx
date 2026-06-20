@@ -1,22 +1,19 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAssignmentStore } from '../store/assignmentStore';
-import Navbar from '../components/Navbar';
 
-// Grade colour mapping
-const US_COLORS = { A: 'green', B: 'blue', C: 'yellow', D: 'orange', F: 'red' };
+// ── Grade colour mapping ─────────────────────────────────────────────────────
+
+const US_COLORS = { A: 'green', B: 'blue', C: 'amber', D: 'orange', F: 'red' };
 const UK_COLORS = {
-  'First Class': 'green',
-  '2:1': 'blue',
-  '2:2': 'yellow',
-  'Third Class': 'orange',
-  Fail: 'red',
+  'First Class': 'green', '2:1': 'blue', '2:2': 'amber',
+  'Third Class': 'orange', Fail: 'red',
 };
 
 const COLOR_CLASSES = {
   green:  { bg: 'bg-green-100',  text: 'text-green-700',  border: 'border-green-300',  bar: 'bg-green-500' },
   blue:   { bg: 'bg-blue-100',   text: 'text-blue-700',   border: 'border-blue-300',   bar: 'bg-blue-500' },
-  yellow: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300', bar: 'bg-yellow-500' },
+  amber:  { bg: 'bg-amber-100',  text: 'text-amber-700',  border: 'border-amber-300',  bar: 'bg-amber-500' },
   orange: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300', bar: 'bg-orange-500' },
   red:    { bg: 'bg-red-100',    text: 'text-red-700',    border: 'border-red-300',    bar: 'bg-red-500' },
 };
@@ -26,12 +23,18 @@ function gradeColor(grade, system) {
   return COLOR_CLASSES[map[grade] ?? 'blue'];
 }
 
+function scoreColor(score) {
+  if (score >= 85) return COLOR_CLASSES.green;
+  if (score >= 70) return COLOR_CLASSES.blue;
+  if (score >= 55) return COLOR_CLASSES.amber;
+  return COLOR_CLASSES.red;
+}
+
 export default function ResultsPage() {
   const navigate = useNavigate();
   const { result, status, uploadError, reset } = useAssignmentStore();
 
   useEffect(() => {
-    // If user lands here without a submission in progress, redirect
     if (!status && !result) navigate('/');
   }, [status, result, navigate]);
 
@@ -40,7 +43,7 @@ export default function ResultsPage() {
     navigate('/');
   };
 
-  // ── Loading state ──────────────────────────────────────────────────────────
+  // ── Loading state ────────────────────────────────────────────────────────
   if (status === 'pending' || status === 'processing') {
     return (
       <FullPageCenter>
@@ -56,7 +59,7 @@ export default function ResultsPage() {
     );
   }
 
-  // ── Error state ────────────────────────────────────────────────────────────
+  // ── Error state ───────────────────────────────────────────────────────────
   if (status === 'error' || uploadError) {
     return (
       <FullPageCenter>
@@ -72,10 +75,14 @@ export default function ResultsPage() {
 
   if (!result) return null;
 
-  const { letter_grade, raw_score, grading_system, dimension_scores, swot,
-          anchored_feedback, flag_for_review, chain_of_thought } = result;
+  const {
+    letter_grade, raw_score, grading_system, summary,
+    dimension_scores, swot, anchored_feedback, next_steps,
+    instructions_alignment, flag_for_review, chain_of_thought,
+  } = result;
 
   const colors = gradeColor(letter_grade, grading_system);
+  const dimEntries = Object.entries(dimension_scores);
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
@@ -90,7 +97,7 @@ export default function ResultsPage() {
           </button>
         </div>
 
-        {/* ── Human Review Banner ──────────────────────────────────────────── */}
+        {/* ── Human Review Banner ────────────────────────────────────────── */}
         {flag_for_review && (
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-300
                           rounded-xl px-5 py-4 text-amber-800 text-sm">
@@ -105,32 +112,85 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* ── Grade Card ───────────────────────────────────────────────────── */}
-        <div className={`rounded-2xl border-2 ${colors.border} ${colors.bg} p-8
-                         flex flex-col sm:flex-row items-center gap-6`}>
-          <div className={`text-7xl font-black ${colors.text} leading-none`}>
-            {letter_grade}
+        {/* ── Grade Card + Summary ───────────────────────────────────────── */}
+        <div className={`rounded-2xl border-2 ${colors.border} ${colors.bg} p-8`}>
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            <div className={`text-7xl font-black ${colors.text} leading-none shrink-0`}>
+              {letter_grade}
+            </div>
+            <div className="text-center sm:text-left flex-1">
+              <p className="text-gray-600 text-sm font-medium uppercase tracking-wide">
+                {grading_system} System · {grading_system === 'US' ? 'Additive' : 'Deductive'}
+              </p>
+              <p className="text-4xl font-bold text-gray-900 mt-1">
+                {raw_score.toFixed(1)}<span className="text-xl text-gray-400">/100</span>
+              </p>
+            </div>
           </div>
-          <div className="text-center sm:text-left">
-            <p className="text-gray-600 text-sm font-medium uppercase tracking-wide">
-              {grading_system} System · {grading_system === 'US' ? 'Additive' : 'Deductive'}
+          {summary && (
+            <p className="mt-5 pt-5 border-t border-black/10 text-gray-800 font-medium leading-relaxed">
+              {summary}
             </p>
-            <p className="text-4xl font-bold text-gray-900 mt-1">
-              {raw_score.toFixed(1)}<span className="text-xl text-gray-400">/100</span>
-            </p>
-          </div>
+          )}
         </div>
 
-        {/* ── Dimension Scores ─────────────────────────────────────────────── */}
-        <Section title="Dimension Breakdown">
-          <div className="space-y-4">
-            {Object.entries(dimension_scores).map(([dim, data]) => (
-              <DimensionRow key={dim} name={dim} data={data} colors={colors} />
+        {/* ── Instructions Alignment (only if instructions were given) ─────── */}
+        {instructions_alignment && (
+          <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200
+                          rounded-xl px-5 py-4 text-sm">
+            <span className="text-lg shrink-0">📋</span>
+            <div>
+              <p className="font-semibold text-indigo-900 mb-0.5">Assignment Brief Alignment</p>
+              <p className="text-indigo-800">{instructions_alignment}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Dimension Score Grid ──────────────────────────────────────── */}
+        <Section title="Dimension Scores" noPadding>
+          <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+            {dimEntries.map(([dim, data]) => {
+              const sc = scoreColor(data.score);
+              return (
+                <div key={dim} className="p-4">
+                  <p className="text-xs text-gray-500 capitalize mb-1 truncate">{dim}</p>
+                  <p className="text-xl font-bold text-gray-900 mb-2">{data.score.toFixed(0)}</p>
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-1.5 rounded-full ${sc.bar}`} style={{ width: `${data.score}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+
+        {/* ── Per-Dimension Detail (rationale + evidence together) ─────────── */}
+        <Section title="Evaluator Rationale">
+          <div className="space-y-5">
+            {dimEntries.map(([dim, data]) => (
+              <DimensionDetail key={dim} name={dim} data={data} />
             ))}
           </div>
         </Section>
 
-        {/* ── SWOT Analysis ────────────────────────────────────────────────── */}
+        {/* ── Next Steps ────────────────────────────────────────────────── */}
+        {next_steps?.length > 0 && (
+          <Section title="Next Steps">
+            <ol className="space-y-3">
+              {next_steps.map((step, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700
+                                   text-xs font-bold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm text-gray-700 leading-relaxed">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </Section>
+        )}
+
+        {/* ── SWOT Analysis ─────────────────────────────────────────────── */}
         <Section title="SWOT Analysis">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <SWOTQuadrant label="Strengths" emoji="💪" items={swot.strengths} color="green" />
@@ -140,33 +200,14 @@ export default function ResultsPage() {
           </div>
         </Section>
 
-        {/* ── Anchored Feedback ────────────────────────────────────────────── */}
+        {/* ── Anchored Feedback Narrative ───────────────────────────────── */}
         <Section title="Detailed Feedback">
-          <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap leading-relaxed">
+          <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
             {anchored_feedback}
           </div>
         </Section>
 
-        {/* ── Evidence Quotes ──────────────────────────────────────────────── */}
-        <Section title="Evidence from Your Submission">
-          {Object.entries(dimension_scores).map(([dim, data]) =>
-            data.evidence?.length ? (
-              <div key={dim} className="mb-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
-                  {dim}
-                </h4>
-                {data.evidence.map((quote, i) => (
-                  <blockquote key={i}
-                    className="border-l-4 border-indigo-300 pl-4 py-1 text-sm text-gray-600 italic mb-2">
-                    "{quote}"
-                  </blockquote>
-                ))}
-              </div>
-            ) : null
-          )}
-        </Section>
-
-        {/* ── Chain of Thought (collapsible) ───────────────────────────────── */}
+        {/* ── Chain of Thought (collapsible) ─────────────────────────────── */}
         {chain_of_thought?.length > 0 && (
           <details className="bg-white rounded-xl border border-gray-200 shadow-sm">
             <summary className="px-6 py-4 font-semibold text-gray-700 cursor-pointer
@@ -186,33 +227,39 @@ export default function ResultsPage() {
   );
 }
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+// ── Sub-components ───────────────────────────────────────────────────────────
 
-function Section({ title, children }) {
+function Section({ title, children, noPadding = false }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
-      {children}
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <h2 className="text-lg font-semibold text-gray-800 px-6 pt-6 pb-3">{title}</h2>
+      <div className={noPadding ? '' : 'px-6 pb-6'}>{children}</div>
     </div>
   );
 }
 
-function DimensionRow({ name, data, colors }) {
-  const pct = data.score;
+function DimensionDetail({ name, data }) {
+  const sc = scoreColor(data.score);
   return (
-    <div>
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-gray-700 capitalize">{name}</span>
-        <span className="text-sm font-semibold text-gray-900">{pct.toFixed(0)}/100</span>
-      </div>
-      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-2 rounded-full transition-all duration-700 ${colors.bar}`}
-          style={{ width: `${pct}%` }}
-        />
+    <div className="rounded-xl border border-gray-200 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold text-gray-800 capitalize">{name}</span>
+        <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${sc.bg} ${sc.text}`}>
+          {data.score.toFixed(0)}/100
+        </span>
       </div>
       {data.chain_of_thought && (
-        <p className="text-xs text-gray-500 mt-1">{data.chain_of_thought}</p>
+        <p className="text-sm text-gray-600 leading-relaxed mb-3">{data.chain_of_thought}</p>
+      )}
+      {data.evidence?.length > 0 && (
+        <div className="space-y-1.5">
+          {data.evidence.map((quote, i) => (
+            <blockquote key={i}
+              className="border-l-2 border-gray-300 pl-3 py-0.5 text-xs text-gray-500 italic">
+              "{quote}"
+            </blockquote>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -220,6 +267,7 @@ function DimensionRow({ name, data, colors }) {
 
 function SWOTQuadrant({ label, emoji, items, color }) {
   const palette = COLOR_CLASSES[color];
+  if (!items?.length) return null;
   return (
     <div className={`rounded-xl border ${palette.border} ${palette.bg} p-4`}>
       <h3 className={`font-semibold text-sm mb-2 ${palette.text}`}>

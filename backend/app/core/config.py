@@ -1,8 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
 import dotenv
 
 dotenv.load_dotenv()
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -17,13 +17,27 @@ class Settings(BaseSettings):
     SUPABASE_SECRET_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
 
-    # LLM API Keys (pool for redundancy)
+    # ── LLM provider pools (tried in this order) ──────────────────────────────
+    # 1. Gemini — primary, free-tier key pool × model fallback chain
     GEMINI_API_KEY_1: str = ""
     GEMINI_API_KEY_2: str = ""
     GEMINI_API_KEY_3: str = ""
     GEMINI_API_KEY_4: str = ""
+
+    # 2. DeepSeek — OpenAI-compatible
     DEEPSEEK_API_KEY: str = ""
-    PRIMARY_LLM_PROVIDER: str = "gemini"  # "gemini" 
+
+    # 3. NVIDIA NIM — OpenAI-compatible, hosts Llama/Qwen/Mistral chat models
+    NVIDIA_API_KEY: str = ""
+
+    # 4. Mistral — native API, key pool
+    MISTRAL_API_KEY: str = ""
+    MISTRAL_API_KEY_2: str = ""
+
+    # 5. GitHub Models — Azure AI Inference-compatible marketplace
+    GITHUB_MICROSOFT_MODEL_API_KEY: str = ""
+
+    PRIMARY_LLM_PROVIDER: str = "gemini"
 
     # Valkey / Redis
     VALKEY_URL: str = "redis://localhost:6379/0"

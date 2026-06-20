@@ -1,9 +1,15 @@
 """
-assignments.py — with sync fallback when Celery/Redis is unavailable
+assignments.py — with sync fallback when Celery/Redis is unavailable.
+Accepts free-text `instructions` from the instructor so the grader can
+evaluate against the actual assignment brief. Also extracts embedded
+images at upload time and describes them via Mistral vision *inside*
+the background grading task, so the (slow) vision calls never block
+the upload response.
 """
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from typing import Annotated
@@ -15,26 +21,71 @@ from app.core.dependencies import CurrentUser, get_client_ip
 from app.core.supabase import get_supabase
 from app.schemas.grading import AssignmentStatusResponse, GradingSystem
 from app.services.auth.audit import log_event
-from app.services.ingestion.extractor import prepare_submission
+from app.services.ingestion.extractor import (
+    ExtractionResult,
+    append_image_descriptions,
+    describe_images,
+    extract,
+)
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_INSTRUCTIONS_CHARS = 2000 * 5  # 10k chars, ~4k words, ~20-25 pages of text
+
+
+class AssignmentSummary(BaseModel):
+    """Lightweight row for list views — no full feedback payload."""
+    id: str
+    subject: str
+    grading_system: str
+    status: str
+    grade: str | None = None
+    flagged_for_review: bool = False
+    created_at: str
+
+
+class AssignmentListResponse(BaseModel):
+    items: list[AssignmentSummary]
+    total: int
+    limit: int
+    offset: int
 
 
 # ── Grading dispatch ──────────────────────────────────────────────────────────
 
+def _describe_and_finalize_text(extraction: ExtractionResult) -> str:
+    """
+    Describe any extracted images via Mistral vision and fold the
+    descriptions into the submission text. Safe to call with no images
+    (no-op) or with no MISTRAL_API_KEY set (images just get skipped,
+    grading proceeds on text alone).
+    """
+    if extraction.images and os.environ.get("MISTRAL_API_KEY"):
+        try:
+            describe_images(extraction.images)
+            append_image_descriptions(extraction)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Image description failed; continuing with text-only grading."
+            )
+    return extraction.text
+
+
 def _grade_in_thread(
     assignment_id: str,
-    text: str,
+    extraction: ExtractionResult,
     subject: str,
     grading_system: str,
     rubric_dict: dict | None,
+    instructions: str | None,
 ) -> None:
     """Run grading synchronously in a background thread (no Celery needed)."""
     def _run():
         from app.schemas.grading import GradingSystem as GS, Rubric
-        from app.services.scoring.default_rubric import DEFAULT_RUBRIC
+        from app.services.scoring.subject_rubrics import get_rubric_for_subject
         from app.services.scoring.evaluator import evaluate
         from app.core.cache import cache_set
         import logging
@@ -46,13 +97,19 @@ def _grade_in_thread(
                 "id", assignment_id
             ).execute()
 
-            rubric = Rubric(**rubric_dict) if rubric_dict else DEFAULT_RUBRIC
+            # Slow Mistral vision calls happen here, off the request path.
+            text = _describe_and_finalize_text(extraction)
+
+            # Explicit instructor rubric (rubric_id) always wins. Otherwise,
+            # fall back to the per-subject default rubric.
+            rubric = Rubric(**rubric_dict) if rubric_dict else get_rubric_for_subject(subject)
             result = evaluate(
                 submission_text=text,
                 subject=subject,
                 grading_system=GS(grading_system),
                 rubric=rubric,
                 assignment_id=assignment_id,
+                instructions=instructions,
             )
 
             db.table("assignments").update({
@@ -74,19 +131,23 @@ def _grade_in_thread(
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _dispatch(assignment_id, text, subject, grading_system, rubric_dict):
+def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, instructions):
     """Try Celery; fall back to thread if Redis/Celery is unavailable."""
     try:
         from app.services.multi_process.tasks import grade_assignment
         grade_assignment.delay(
             assignment_id=assignment_id,
-            submission_text=text,
+            submission_text=extraction.text,
+            images=extraction.images,
             subject=subject,
             grading_system=grading_system,
             rubric_dict=rubric_dict,
+            instructions=instructions,
         )
     except Exception:
-        _grade_in_thread(assignment_id, text, subject, grading_system, rubric_dict)
+        _grade_in_thread(
+            assignment_id, extraction, subject, grading_system, rubric_dict, instructions
+        )
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -98,6 +159,7 @@ async def submit_assignment(
     file: Annotated[UploadFile, File()],
     subject: Annotated[str, Form()],
     grading_system: Annotated[GradingSystem, Form()],
+    instructions: Annotated[str | None, Form()] = None,
     rubric_id: Annotated[str | None, Form()] = None,
 ):
     content = await file.read()
@@ -108,8 +170,18 @@ async def submit_assignment(
             detail=f"File exceeds {MAX_FILE_BYTES // (1024 * 1024)} MB limit.",
         )
 
+    if instructions and len(instructions) > MAX_INSTRUCTIONS_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Instructions exceed {MAX_INSTRUCTIONS_CHARS} characters.",
+        )
+
     try:
-        text = prepare_submission(content, file.filename or "upload.txt")
+        # Fast path only: extract text + images, anonymise, but do NOT call
+        # Mistral here — that happens later in the background grading task.
+        extraction = extract(content, file.filename or "upload.txt")
+        from app.services.ingestion.extractor import anonymise
+        extraction.text = anonymise(extraction.text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -133,28 +205,85 @@ async def submit_assignment(
             raise HTTPException(status_code=404, detail="Rubric not found.")
         rubric_dict = row.data.get("criteria")
 
-    # Persist record
+    # Persist record (instructions stored for audit/re-grade purposes)
     db.table("assignments").insert({
         "id":             assignment_id,
         "user_id":        user.sub,
         "subject":        subject,
         "grading_system": grading_system.value,
+        "instructions":   instructions,
         "file_url":       file_url,
         "status":         "pending",
     }).execute()
 
-    # Dispatch grading (Celery or thread fallback)
-    _dispatch(assignment_id, text, subject, grading_system.value, rubric_dict)
+    # Dispatch grading (Celery or thread fallback). Image description via
+    # Mistral happens inside the dispatched task, not here.
+    _dispatch(
+        assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions
+    )
 
     log_event(
         "assignment.submit",
         user_id=user.sub,
         ip_address=get_client_ip(request),
-        metadata={"assignment_id": assignment_id, "subject": subject,
-                  "system": grading_system.value},
+        metadata={
+            "assignment_id": assignment_id,
+            "subject": subject,
+            "system": grading_system.value,
+            "has_instructions": bool(instructions),
+            "image_count": len(extraction.images),
+        },
     )
 
     return {"assignment_id": assignment_id, "status": "pending"}
+
+
+@router.get("/", response_model=AssignmentListResponse)
+async def list_assignments(
+    user: CurrentUser,
+    status_filter: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    """
+    List assignments — students see only their own; professors/admins see all.
+    Supports basic pagination and an optional status filter.
+    """
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    db = get_supabase()
+    query = db.table("assignments").select(
+        "id, subject, grading_system, status, grade, flagged_for_review, created_at, user_id",
+        count="exact",
+    )
+
+    if user.role.value == "student":
+        query = query.eq("user_id", user.sub)
+
+    if status_filter:
+        query = query.eq("status", status_filter)
+
+    query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+
+    res = query.execute()
+    rows = res.data or []
+    total = res.count or len(rows)
+
+    items = [
+        AssignmentSummary(
+            id=r["id"],
+            subject=r["subject"],
+            grading_system=r["grading_system"],
+            status=r["status"],
+            grade=r.get("grade"),
+            flagged_for_review=bool(r.get("flagged_for_review")),
+            created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+
+    return AssignmentListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/{assignment_id}", response_model=AssignmentStatusResponse)

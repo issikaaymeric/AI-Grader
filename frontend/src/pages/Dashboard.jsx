@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
 import { useAssignmentStore } from '../store/assignmentStore';
-import Navbar from '../components/Navbar';
+
 const ACCEPTED_TYPES = {
   'application/pdf': ['.pdf'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
@@ -10,9 +10,52 @@ const ACCEPTED_TYPES = {
 };
 
 const SUBJECTS = [
-  'Computer Science', 'Literature', 'History', 'Biology',
-  'Economics', 'Philosophy', 'Psychology', 'Engineering',
+  "Basic Issues in Philosophy",
+  "Understanding Business Organizations",
+  "Discrete Mathematics",
+  "Financing and Investing Activities",
+  "Foundations in Finance",
+  "Human Geography",
+  "Introduction to Sociology",
+  "Essentials of Management",
+  "Macroeconomics",
+  "Contemporary Short Story",
+  "World History",
+  "Writing in the Disciplines",
+  "World Religions",
+  "Information System and Organisations",
+  "Financial Management",
+  "The Economics of Discrimination and Poverty",
+  "Accounting for Business Operations",
+  "Business Ethics",
+  "Business Math",
+  "Business Statistics",
+  "Principles of Business Operations",
+  "Introduction to Computer Science",
+  "Introduction to Databases",
+  "Microeconomics",
+  "Microsoft Essential Solutions",
+  "Organizational Communication",
+  "Interpersonal Communication",
+  "Earth Sciences",
+  "International Trade",
+  "Ecommerce / E-Commerce (eBusiness)",
+  "International Finance",
+  "Calculus I",
+  "Calculus II",
+  "Introduction to Networking",
+  "Data Analysis and Visualisation with Python",
+  "Introduction to Programming",
+  "Front End Development",
+  "Data Science and Big Data",
+  "IT Project Management",
+  "Mobile End Development",
+  "Network Security and Cryptography",
+  "Agile Development",
+  "Back End Development",
 ];
+
+const MAX_INSTRUCTIONS_CHARS = 5000 * 2;
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -21,6 +64,7 @@ export default function Dashboard() {
   const [file, setFile] = useState(null);
   const [subject, setSubject] = useState('');
   const [gradingSystem, setGradingSystem] = useState('US');
+  const [instructions, setInstructions] = useState('');
 
   const onDrop = useCallback((accepted) => {
     if (accepted.length > 0) setFile(accepted[0]);
@@ -36,11 +80,18 @@ export default function Dashboard() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file || !subject) return;
-    const result = await submitAssignment(file, subject, gradingSystem, null);
+    const result = await submitAssignment(
+      file,
+      subject,
+      gradingSystem,
+      null,                       // rubricId
+      instructions.trim() || null // optional assignment brief
+    );
     if (result?.ok) navigate('/results');
   };
 
   const isProcessing = uploading || status === 'pending' || status === 'processing';
+  const instructionsOverLimit = instructions.length > MAX_INSTRUCTIONS_CHARS;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -86,6 +137,33 @@ export default function Dashboard() {
               {fileRejections[0].errors[0].message}
             </p>
           )}
+
+          {/* Assignment Instructions */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Assignment Instructions <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <span className={`text-xs ${instructionsOverLimit ? 'text-red-500' : 'text-gray-400'}`}>
+                {instructions.length}/{MAX_INSTRUCTIONS_CHARS}
+              </span>
+            </div>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Paste the assignment brief or prompt here so the grader evaluates against what was actually asked (e.g. 'Write a 1500-word essay comparing Keynesian and Austrian responses to the 2008 crisis, citing at least 3 peer-reviewed sources')."
+              rows={4}
+              maxLength={MAX_INSTRUCTIONS_CHARS + 200}
+              className={`w-full rounded-lg border px-4 py-2.5 text-gray-900 text-sm resize-y
+                         focus:outline-none focus:ring-2 focus:ring-indigo-500
+                         ${instructionsOverLimit ? 'border-red-300' : 'border-gray-300'}`}
+            />
+            {!instructions && (
+              <p className="text-xs text-gray-400 mt-1">
+                Leave blank to grade generally against the subject and rubric only.
+              </p>
+            )}
+          </div>
 
           {/* Subject */}
           <div>
@@ -139,7 +217,7 @@ export default function Dashboard() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={!file || !subject || isProcessing}
+            disabled={!file || !subject || isProcessing || instructionsOverLimit}
             className="w-full py-3 px-6 rounded-xl bg-indigo-600 text-white font-semibold
                        hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
                        transition-colors flex items-center justify-center gap-2"

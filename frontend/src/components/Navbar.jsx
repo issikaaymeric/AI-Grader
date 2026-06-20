@@ -16,16 +16,18 @@ const AVATAR_COLORS = {
 
 const NAV_LINKS = {
   student: [
-    { to: '/',        icon: 'ti-upload',    label: 'Submit' },
-    { to: '/results', icon: 'ti-file-text', label: 'My grades' },
+    { to: '/',       icon: 'ti-upload',    label: 'Submit' },
+    { to: '/grades', icon: 'ti-file-text', label: 'My grades' },
   ],
   professor: [
     { to: '/',          icon: 'ti-upload',     label: 'Submissions' },
+    { to: '/grades',    icon: 'ti-file-text',  label: 'All grades' },
     { to: '/rubrics',   icon: 'ti-list-check', label: 'Rubrics' },
     { to: '/analytics', icon: 'ti-chart-bar',  label: 'Analytics' },
   ],
   admin: [
     { to: '/',          icon: 'ti-upload',     label: 'Submissions' },
+    { to: '/grades',    icon: 'ti-file-text',  label: 'All grades' },
     { to: '/rubrics',   icon: 'ti-list-check', label: 'Rubrics' },
     { to: '/analytics', icon: 'ti-chart-bar',  label: 'Analytics' },
   ],
