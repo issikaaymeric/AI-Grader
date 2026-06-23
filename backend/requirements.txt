@@ -33,3 +33,6 @@ passlib[bcrypt]
 # Testing
 pytest
 pytest-asyncio
+
+
+email-validator
