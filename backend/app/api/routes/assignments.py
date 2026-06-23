@@ -325,3 +325,30 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
         status=data["status"],
         result=result,
     )
+    
+@router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_assignment(assignment_id: str, user: CurrentUser):
+    """Delete an assignment (only owner or admin can delete)"""
+    db = get_supabase()
+
+    # Fetch to check ownership
+    row = db.table("assignments").select("user_id").eq("id", assignment_id).single().execute()
+
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    if user.role.value == "student" and row.data["user_id"] != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    # Optional: Add soft delete later by setting status="deleted" instead of hard delete
+
+    # Hard delete
+    db.table("assignments").delete().eq("id", assignment_id).execute()
+
+    # Also try to clean up storage (non-critical)
+    try:
+        db.storage.from_("assignments").remove([f"assignments/{assignment_id}"])
+    except Exception:
+        pass
+
+    return None  # 204 No Content
