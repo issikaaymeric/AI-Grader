@@ -1,15 +1,13 @@
 """
 llm_client.py
 
-Provider waterfall, tried in order until one succeeds:
-  1. Gemini      — key pool x model fallback chain (free tier)
-  2. DeepSeek     — OpenAI-compatible
-  3. NVIDIA NIM   — OpenAI-compatible (Llama/Qwen/Mistral hosted chat models)
-  4. Mistral      — native API, key pool
-  5. GitHub Models — Azure AI Inference-compatible marketplace
-
-429 / quota-exhausted on any provider -> skip immediately, no sleep.
+Provider waterfall (Gemini removed as requested):
+  1. DeepSeek     — OpenAI-compatible (primary now)
+  2. NVIDIA NIM
+  3. Mistral
+  4. GitHub Models
 """
+
 from __future__ import annotations
 
 import json
@@ -20,51 +18,10 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# The evaluator prompt asks for: chain_of_thought array, instructions_alignment,
-# 4+ dimension scores (each with evidence quotes + reasoning), a 4-part SWOT,
-# 2-4 next_steps, and a 3-5 paragraph anchored_feedback narrative. That routinely
-# runs well past 4-8k tokens for a thorough response — too small a cap is the
-# most common cause of "Unterminated string" JSON parse failures (the model gets
-# cut off mid-response, not because it produced malformed JSON).
 MAX_OUTPUT_TOKENS = 16384
 
 
-# ── Gemini ────────────────────────────────────────────────────────────────────
-
-def _gemini_pool() -> list[str]:
-    keys = [
-        settings.GEMINI_API_KEY_1,
-        settings.GEMINI_API_KEY_2,
-        settings.GEMINI_API_KEY_3,
-        settings.GEMINI_API_KEY_4,
-    ]
-    return [k for k in keys if k]
-
-GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-]
-
-def _gemini_once(api_key: str, model: str, system: str, user: str) -> str:
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
-        model=model,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=0.2,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
-        ),
-        contents=user,
-    )
-    return resp.text
-
-
-# ── DeepSeek (OpenAI-compatible) ─────────────────────────────────────────────
+# ── DeepSeek (Primary) ───────────────────────────────────────────────────────
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL    = "deepseek-chat"
@@ -78,8 +35,9 @@ def _deepseek_once(system: str, user: str) -> str:
     client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     resp = client.chat.completions.create(
         model=DEEPSEEK_MODEL,
-        temperature=0.2,
+        temperature=0.1,                    # Lower = more deterministic
         max_tokens=MAX_OUTPUT_TOKENS,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
@@ -88,7 +46,7 @@ def _deepseek_once(system: str, user: str) -> str:
     return resp.choices[0].message.content
 
 
-# ── NVIDIA NIM (OpenAI-compatible chat — NOT the embeddings endpoint) ───────
+# ── NVIDIA NIM ───────────────────────────────────────────────────────────────
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODELS = [
@@ -106,8 +64,9 @@ def _nvidia_once(model: str, system: str, user: str) -> str:
     client = OpenAI(api_key=settings.NVIDIA_API_KEY, base_url=NVIDIA_BASE_URL)
     resp = client.chat.completions.create(
         model=model,
-        temperature=0.2,
+        temperature=0.1,
         max_tokens=MAX_OUTPUT_TOKENS,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
@@ -116,7 +75,7 @@ def _nvidia_once(model: str, system: str, user: str) -> str:
     return resp.choices[0].message.content
 
 
-# ── Mistral (native API, key pool) ───────────────────────────────────────────
+# ── Mistral ──────────────────────────────────────────────────────────────────
 
 MISTRAL_MODEL = "mistral-large-latest"
 
@@ -130,8 +89,10 @@ def _mistral_once(api_key: str, system: str, user: str) -> str:
     client = Mistral(api_key=api_key)
     resp = client.chat.complete(
         model=MISTRAL_MODEL,
-        temperature=0.2,
+        temperature=0.1,
         max_tokens=MAX_OUTPUT_TOKENS,
+        # Mistral native API uses different param for JSON mode
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
@@ -140,7 +101,7 @@ def _mistral_once(api_key: str, system: str, user: str) -> str:
     return resp.choices[0].message.content
 
 
-# ── GitHub Models (Azure AI Inference-compatible) ────────────────────────────
+# ── GitHub Models ────────────────────────────────────────────────────────────
 
 GITHUB_MODELS_ENDPOINT = "https://models.inference.ai.azure.com"
 GITHUB_MODEL = "gpt-4o-mini"
@@ -157,11 +118,9 @@ def _github_models_once(system: str, user: str) -> str:
     )
     resp = client.chat.completions.create(
         model=GITHUB_MODEL,
-        temperature=0.2,
-        # GitHub Models marketplace caps gpt-4o-mini context/output lower than
-        # the other providers regardless of what we request; this is provider's
-        # actual ceiling, not a knob we can raise to match MAX_OUTPUT_TOKENS.
+        temperature=0.1,
         max_tokens=4096,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
@@ -170,41 +129,44 @@ def _github_models_once(system: str, user: str) -> str:
     return resp.choices[0].message.content
 
 
+# ── Groq (NEW) ───────────────────────────────────────────────────────────────
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODELS = [
+    "llama-3.3-70b-versatile",      # Best balance
+    "llama-3.1-8b-instant",         # Faster fallback
+    "gemma2-9b-it",
+]
+
+def _groq_once(model: str, system: str, user: str) -> str:
+    from openai import OpenAI
+
+    if not settings.GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY not set")
+
+    client = OpenAI(api_key=settings.GROQ_API_KEY, base_url=GROQ_BASE_URL)
+    resp = client.chat.completions.create(
+        model=model,
+        temperature=0.1,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        response_format={"type": "json_object"},
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+    )
+    return resp.choices[0].message.content
+    
+
+
 # ── Public interface ──────────────────────────────────────────────────────────
 
 def _is_quota_error(exc: Exception) -> bool:
-    s = str(exc)
-    return "429" in s or "RESOURCE_EXHAUSTED" in s or "rate" in s.lower()
+    s = str(exc).lower()
+    return "429" in s or "resource_exhausted" in s or "rate" in s or "quota" in s
 
 
 def call_llm(system_prompt: str, user_prompt: str) -> str:
-    """
-    Waterfall through every provider/model/key combination.
-    Stops at the first success. Logs which provider/model actually served
-    the response, so truncated-JSON failures downstream can be traced back
-    to a specific provider instead of being indistinguishable.
-    """
+    """Waterfall through providers. DeepSeek is now first."""
     last_exc: Exception | None = None
 
-    # 1. Gemini — key pool x model chain
-    for model in GEMINI_MODELS:
-        for api_key in _gemini_pool():
-            try:
-                logger.info("Trying Gemini model=%s key=...%s", model, api_key[-6:])
-                result = _gemini_once(api_key, model, system_prompt, user_prompt)
-                logger.info(
-                    "Gemini succeeded: model=%s key=...%s (%d chars)",
-                    model, api_key[-6:], len(result),
-                )
-                return result
-            except Exception as exc:
-                logger.warning(
-                    "Gemini %s key=...%s — %s", model, api_key[-6:],
-                    "quota exhausted" if _is_quota_error(exc) else str(exc),
-                )
-                last_exc = exc
-
-    # 2. DeepSeek
+    # 1. DeepSeek (Primary)
     try:
         logger.info("Trying DeepSeek (%s)", DEEPSEEK_MODEL)
         result = _deepseek_once(system_prompt, user_prompt)
@@ -214,7 +176,7 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
         logger.warning("DeepSeek failed: %s", exc)
         last_exc = exc
 
-    # 3. NVIDIA NIM — model fallback chain
+    # 2. NVIDIA NIM
     for model in NVIDIA_MODELS:
         try:
             logger.info("Trying NVIDIA NIM (%s)", model)
@@ -225,7 +187,7 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
             logger.warning("NVIDIA %s failed: %s", model, exc)
             last_exc = exc
 
-    # 4. Mistral — key pool
+    # 3. Mistral
     for api_key in _mistral_pool():
         try:
             logger.info("Trying Mistral key=...%s", api_key[-6:])
@@ -236,7 +198,7 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
             logger.warning("Mistral key=...%s failed: %s", api_key[-6:], exc)
             last_exc = exc
 
-    # 5. GitHub Models
+    # 4. GitHub Models
     try:
         logger.info("Trying GitHub Models (%s)", GITHUB_MODEL)
         result = _github_models_once(system_prompt, user_prompt)
@@ -245,15 +207,25 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     except Exception as exc:
         logger.warning("GitHub Models failed: %s", exc)
         last_exc = exc
+        
+    # 2. Groq (NEW)
+    for model in GROQ_MODELS:
+        try:
+            logger.info("Trying Groq model=%s", model)
+            result = _groq_once(model, system_prompt, user_prompt)
+            logger.info("Groq succeeded: %s (%d chars)", model, len(result))
+            return result
+        except Exception as exc:
+            logger.warning("Groq %s failed: %s", model, exc)
+            last_exc = exc
 
     raise RuntimeError(
-        "All providers exhausted (Gemini, DeepSeek, NVIDIA, Mistral, GitHub Models). "
+        "All providers exhausted (DeepSeek, NVIDIA, Mistral, GitHub Models). "
         f"Last error: {last_exc}"
     ) from last_exc
 
 
-# ── JSON repair helpers ───────────────────────────────────────────────────────
-
+# JSON repair helpers (unchanged - kept as-is)
 def _extract_json_block(text: str) -> str:
     cleaned = (
         text.strip()
@@ -269,13 +241,6 @@ def _extract_json_block(text: str) -> str:
 
 
 def _repair_truncated_json(raw: str) -> str:
-    """
-    Walk the raw text and find the last position where bracket depth returns
-    to zero — i.e. the last point at which the JSON was structurally complete.
-    Returns the original string unmodified if no complete top-level structure
-    was ever found (depth never reached 0), so callers can detect that case
-    rather than silently truncating to an empty/garbage result.
-    """
     depth = 0
     last_complete = 0
     in_string = False
@@ -320,14 +285,6 @@ _REQUIRED_TOP_LEVEL_KEYS = ("summary", "dimension_scores", "swot")
 
 
 def _looks_usable(result: dict) -> bool:
-    """
-    A repaired dict can be syntactically valid JSON while still missing the
-    fields evaluate()/_assemble_result() actually needs (e.g. repair truncated
-    mid-way through dimension_scores and silently closed the brackets there).
-    Treat that as a failure rather than letting a near-empty result through,
-    since a near-empty GradingResult with status="done" looks identical to a
-    real one to the frontend and a polling client has no way to tell.
-    """
     if not isinstance(result, dict):
         return False
     return all(key in result and result[key] for key in _REQUIRED_TOP_LEVEL_KEYS)
@@ -341,44 +298,30 @@ def call_llm_json(system_prompt: str, user_prompt: str) -> dict:
         result = json.loads(cleaned)
         if _looks_usable(result):
             return result
-        logger.warning(
-            "JSON parsed but missing required keys %s — treating as failure.",
-            _REQUIRED_TOP_LEVEL_KEYS,
-        )
-    except json.JSONDecodeError as exc:
-        logger.warning("JSON parse failed (%s) — trying truncation repair...", exc)
+    except json.JSONDecodeError:
+        pass
 
+    # Try repairs...
     try:
         repaired_text = _repair_truncated_json(cleaned)
         result = json.loads(repaired_text)
         if _looks_usable(result):
-            logger.info("Truncation repair recovered a usable result.")
+            logger.info("Truncation repair recovered usable JSON.")
             return result
-        logger.warning(
-            "Truncation repair produced valid JSON but missing required keys — "
-            "trying json-repair library..."
-        )
-    except json.JSONDecodeError as exc:
-        logger.warning("Truncation repair failed (%s) — trying json-repair library...", exc)
+    except json.JSONDecodeError:
+        pass
 
     try:
         result = _repair_with_library(cleaned)
         if _looks_usable(result):
-            logger.info("json-repair library successfully recovered a usable result.")
+            logger.info("json-repair library recovered usable JSON.")
             return result
-        logger.warning("json-repair library recovered JSON but it's still missing required keys.")
     except Exception as exc:
-        logger.warning("json-repair library failed: %s", exc)
+        logger.warning("json-repair failed: %s", exc)
 
-    logger.error(
-        "All JSON repair strategies failed or produced unusable results. "
-        "Raw response (first 500 / last 500 chars): %s ... %s",
-        cleaned[:500], cleaned[-500:],
-    )
+    logger.error("All repair strategies failed. Raw response: %s ... %s", 
+                 cleaned[:500], cleaned[-500:])
     raise RuntimeError(
-        "LLM returned invalid or incomplete JSON and all repair attempts failed "
-        "to produce a usable result (missing required fields: summary, "
-        "dimension_scores, or swot). This usually means the response was "
-        "truncated before the model finished — check MAX_OUTPUT_TOKENS and "
-        "which provider served the request in the logs above."
+        "LLM returned invalid or incomplete JSON. Check MAX_OUTPUT_TOKENS "
+        "and provider logs above."
     )

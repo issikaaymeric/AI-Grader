@@ -17,12 +17,14 @@ class Settings(BaseSettings):
     SUPABASE_SECRET_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
 
-    # ── LLM provider pools (tried in this order) ──────────────────────────────
-    # 1. Gemini — primary, free-tier key pool × model fallback chain
-    GEMINI_API_KEY_1: str = ""
-    GEMINI_API_KEY_2: str = ""
-    GEMINI_API_KEY_3: str = ""
-    GEMINI_API_KEY_4: str = ""
+    # # ── LLM provider pools (tried in this order) ──────────────────────────────
+    # # 1. Gemini — primary, free-tier key pool × model fallback chain
+    # GEMINI_API_KEY_1: str = ""
+    # GEMINI_API_KEY_2: str = ""
+    # GEMINI_API_KEY_3: str = ""
+    # GEMINI_API_KEY_4: str = ""
+    
+    GROQ_API_KEY: str = ""
 
     # 2. DeepSeek — OpenAI-compatible
     DEEPSEEK_API_KEY: str = ""

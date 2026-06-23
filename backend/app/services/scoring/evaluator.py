@@ -6,6 +6,7 @@ parses structured JSON output, and assembles a GradingResult.
 from __future__ import annotations
 
 import logging
+import re
 import textwrap
 import uuid
 
@@ -15,6 +16,7 @@ from app.schemas.grading import (
     GradingSystem,
     Rubric,
     SWOTAnalysis,
+    LineAnnotation
 )
 from app.services.scoring.grade_mapping import (
     apply_grading_mode,
@@ -22,6 +24,7 @@ from app.services.scoring.grade_mapping import (
     map_grade,
 )
 from app.services.scoring.llm_client import call_llm_json
+from app.services.scoring.text_annotator import annotate
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +122,15 @@ def _build_user_prompt(
 
     Then evaluate the submission step-by-step using chain-of-thought reasoning.
     For EACH dimension:
-      1. Identify 2-4 direct quotes (≤30 words each) from the submission
-         that illustrate performance on that dimension.
-      2. Score the dimension 0-100, factoring in alignment with the
-         assignment instructions.
-      3. Write a 2-3 sentence evaluation citing those quotes.
+      1. Identify 2-4 sentences in the submission that are relevant to this dimension.
+         Reference them by their [Pn, Ln] label (e.g. "[P2, L8]").
+      2. Score the dimension 0-100.
+      3. Write a 2-3 sentence evaluation citing those labels.
+      4. For each cited location, produce an annotation:
+           - "location": "P2, L8"
+           - "quote": the exact sentence text (without the label prefix)
+           - "issue": what specifically is wrong or strong at that location
+           - "suggestion": a concrete, one-sentence fix or reinforcement
 
     Then:
       - Write a ONE-SENTENCE summary capturing the overall verdict
@@ -140,53 +147,62 @@ def _build_user_prompt(
         were fully addressed.
 
     REQUIRED JSON SCHEMA (respond with this exact structure):
-    {{
+    
       "chain_of_thought": ["step1 reasoning ...", "step2 ..."],
       "summary": "One-sentence overall verdict.",
 {instructions_alignment_field}      "dimension_scores": {{
         "<dim_name>": {{
-          "score": <0-100>,
-          "evidence": ["quote1", "quote2"],
-          "chain_of_thought": "Your evaluation rationale for this dimension."
-        }}
-      }},
-      "swot": {{
-        "strengths": ["..."],
-        "weaknesses": ["..."],
-        "opportunities": ["..."],
-        "threats": ["..."]
-      }},
-      "next_steps": ["Most impactful action first.", "Second action.", "..."],
-      "anchored_feedback": "Full narrative feedback with inline quotes..."
+        "score": <0-100>,
+        "evidence": ["[P1, L2] quote...", "[P3, L9] quote..."],
+        "chain_of_thought": "Rationale...",
+        "annotations": [
+          {{
+            "location": "P2, L8",
+            "quote": "exact sentence from submission",
+            "issue": "The claim is unsupported by any cited source.",
+            "suggestion": "Add an in-text citation referencing the theoretical framework introduced in your introduction."
+          }}
+        ]
+      }}
     }}
     """).strip()
 
 
 # ── Result assembly ──────────────────────────────────────────────────────────
 
-def _assemble_result(
-    raw_llm: dict,
-    rubric: Rubric,
-    system: GradingSystem,
-    assignment_id: str,
-) -> GradingResult:
+def _assemble_result(raw_llm: dict, rubric: Rubric, system: GradingSystem, assignment_id: str) -> GradingResult:
     weights = rubric.effective_weights(system)
-
     dim_scores: dict[str, DimensionScore] = {}
     raw_scores: dict[str, float] = {}
+    all_annotations: list[LineAnnotation] = []
 
     for dim, data in raw_llm.get("dimension_scores", {}).items():
         score = float(data.get("score", 0))
         weight = weights.get(dim, 0)
         weighted = round(score * weight, 2)
         raw_scores[dim] = score
+
+        annotations = [
+            LineAnnotation(**a)
+            for a in data.get("annotations", [])
+            if all(k in a for k in ("location", "quote", "issue", "suggestion"))
+        ]
+        all_annotations.extend(annotations)
+
         dim_scores[dim] = DimensionScore(
             score=score,
             weight=weight,
             weighted_score=weighted,
             evidence=data.get("evidence", []),
             chain_of_thought=data.get("chain_of_thought", ""),
+            annotations=annotations,
         )
+        
+    def _loc_sort_key(a: LineAnnotation) -> tuple[int, int]:
+        m = re.match(r"P(\d+),\s*L(\d+)", a.location)
+        return (int(m.group(1)), int(m.group(2))) if m else (999, 999)
+    
+    all_annotations.sort(key=_loc_sort_key)
 
     final_score = apply_grading_mode(raw_scores, weights, rubric.grading_mode.value)
 
@@ -197,6 +213,8 @@ def _assemble_result(
         opportunities=swot_raw.get("opportunities", []),
         threats=swot_raw.get("threats", []),
     )
+    
+
 
     return GradingResult(
         assignment_id=assignment_id,
@@ -206,6 +224,7 @@ def _assemble_result(
         summary=raw_llm.get("summary", "").strip()
         or "No summary was generated for this submission.",
         dimension_scores=dim_scores,
+        annotations=all_annotations,
         swot=swot,
         anchored_feedback=raw_llm.get("anchored_feedback", ""),
         next_steps=raw_llm.get("next_steps", []),
@@ -232,11 +251,17 @@ def evaluate(
       3. Parse JSON response.
       4. Assemble and return GradingResult.
     """
+    annotated = annotate(submission_text)
     if assignment_id is None:
         assignment_id = str(uuid.uuid4())
 
+    # FIXED CALL
     user_prompt = _build_user_prompt(
-        submission_text, rubric, grading_system, subject, instructions
+        annotated.annotated_text,   # annotated version with [P1, L1] labels
+        rubric,
+        grading_system,
+        subject,
+        instructions
     )
 
     logger.info(

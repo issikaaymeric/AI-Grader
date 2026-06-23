@@ -33,6 +33,12 @@ class UKGrade(str, Enum):
 
 # ── Rubric ─────────────────────────────────────────────────────────────────
 
+class LineAnnotation(BaseModel):
+    location: str           # "[P2, L3]"
+    quote: str              # Quoted sentence from submission
+    issue: str              # What the LLM identified as a problem
+    suggestion: str        # How to improve it
+
 class DimensionConfig(BaseModel):
     description: str
     weight: float = Field(gt=0, le=1)
@@ -70,6 +76,7 @@ class DimensionScore(BaseModel):
     weighted_score: float
     evidence: list[str]           # Quoted sentences from submission
     chain_of_thought: str
+    annotations: list[LineAnnotation] = Field(default_factory=list)  # Optional, only if LLM provides line-level feedback
 
 
 class SWOTAnalysis(BaseModel):
@@ -92,6 +99,7 @@ class GradingResult(BaseModel):
     instructions_alignment: str | None = None # Did the submission address the brief? (None if no instructions given)
     flag_for_review: bool
     chain_of_thought: list[str]               # Step-by-step log
+    annotations: list[LineAnnotation] = Field(default_factory=list)  # Optional, only if LLM provides line-level feedback
 
 
 # ── API request/response wrappers ──────────────────────────────────────────
