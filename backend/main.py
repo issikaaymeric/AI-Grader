@@ -21,7 +21,7 @@ app = FastAPI(
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://your-frontend.vercel.app"],
+    allow_origins=["http://localhost:5173", "https://ai-grader-bu8f19sw4-issika-aymeric-kouames-projects.vercel.app", "https://ai-grader-ashen.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
