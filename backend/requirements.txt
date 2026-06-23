@@ -1,35 +1,23 @@
-# Web Framework
-fastapi
-uvicorn[standard]
-python-multipart
-
-# Pydantic & Settings
-pydantic
-pydantic-settings
-
-# AI & Data
-supabase
-anthropic
-openai
-google-genai>=2.0.0
-mistralai
-json-repair
-tenacity
-pillow
-pymupdf
-
-# File Processing
-PyPDF2
-python-docx
-
-# Task Queue & Cache
-celery
-valkey
-
-# Auth & Security
-python-jose[cryptography]
-passlib[bcrypt]
-
-# Testing
-pytest
-pytest-asyncio
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+pydantic==2.7.1
+pydantic-settings==2.2.1
+supabase==2.4.3
+anthropic==0.26.0
+openai==1.30.1
+google-genai>=0.3.0
+mistralai>=1.5.0
+json-repair>=0.30.0
+celery==5.4.0
+valkey==5.0.2
+PyPDF2==3.0.1
+python-docx==1.1.2
+httpx==0.27.0
+tenacity==8.3.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pytest==8.2.1
+pytest-asyncio==0.23.7
+pillow==12.2.0
+pymupdf==1.5.0
