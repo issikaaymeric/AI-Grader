@@ -7,6 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Force pip to ignore old cache and fetch fresh metadata
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
