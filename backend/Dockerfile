@@ -1,19 +1,23 @@
 FROM python:3.12-slim
 
+# Set environment variables for non-interactive installs
+ENV DEBIAN_FRONTEND=noninteractive
+
 WORKDIR /app
 
-# System deps for python-docx / PyPDF2
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Force pip to ignore old cache and fetch fresh metadata
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
+# Copy only the requirements first to leverage Docker layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
+# Upgrade pip and install dependencies in one clean layer
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of your application code
 COPY . .
 
 EXPOSE 8000
