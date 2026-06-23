@@ -1,0 +1,38 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Pydantic & Settings
+pydantic
+pydantic-settings
+
+# AI & Data
+supabase
+anthropic
+openai
+google-genai>=2.0.0
+mistralai
+json-repair
+tenacity
+pillow
+pymupdf
+
+# File Processing
+PyPDF2
+python-docx
+
+# Task Queue & Cache
+celery
+valkey
+
+# Auth & Security
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Testing
+pytest
+pytest-asyncio
+
+
+email-validator
