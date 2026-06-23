@@ -4,6 +4,11 @@
     {
       "src": "app/main.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
     }
   ],
   "rewrites": [
@@ -13,7 +18,7 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/dist/$1"
     }
   ]
 }
