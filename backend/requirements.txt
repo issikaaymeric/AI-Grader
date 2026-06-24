@@ -28,7 +28,7 @@ valkey
 
 # Auth & Security
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
 
 # Testing
 pytest
