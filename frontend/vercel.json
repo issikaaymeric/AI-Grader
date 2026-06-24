@@ -1,13 +1,13 @@
-{
+﻿{
   "version": 2,
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://ai-grader-1kt6.onrender.com/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "https://ai-grader-1kt6.onrender.com/api/$1"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
