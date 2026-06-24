@@ -20,7 +20,6 @@ async function authFetch(path, options = {}) {
   return fetch(path, { ...options, headers });
 }
 
-// Safe JSON parse — never throws on HTML error pages
 async function safeJson(res) {
   const text = await res.text();
   try {
@@ -39,7 +38,6 @@ export const useAssignmentStore = create((set, get) => ({
   status: null,
   result: null,
 
-  // ── History (My Grades page) ────────────────────────────────────────────
   history: [],
   historyTotal: 0,
   historyLoading: false,
@@ -51,7 +49,7 @@ export const useAssignmentStore = create((set, get) => ({
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (statusFilter) params.set('status_filter', statusFilter);
 
-      const res = await authFetch(`/api/assignments/?${params.toString()}`);
+      const res = await authFetch(`/api/assignments?${params.toString()}`);
       const data = await safeJson(res);
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
@@ -68,13 +66,6 @@ export const useAssignmentStore = create((set, get) => ({
     }
   },
 
-  /**
-   * @param {File} file
-   * @param {string} subject
-   * @param {'US'|'UK'} gradingSystem
-   * @param {string|null} rubricId
-   * @param {string|null} instructions  Free-text assignment brief from the instructor
-   */
   submitAssignment: async (file, subject, gradingSystem, rubricId, instructions) => {
     set({ uploading: true, uploadError: null, result: null, status: null });
 
@@ -86,12 +77,10 @@ export const useAssignmentStore = create((set, get) => ({
     if (instructions) form.append('instructions', instructions);
 
     try {
-      const res = await authFetch('/api/assignments/', { method: 'POST', body: form });
+      const res = await authFetch('/api/assignments', { method: 'POST', body: form });
       const data = await safeJson(res);
 
-      if (!res.ok) {
-        throw new Error(parseDetail(data.detail));
-      }
+      if (!res.ok) throw new Error(parseDetail(data.detail));
 
       set({ uploading: false, currentAssignmentId: data.assignment_id, status: 'pending' });
       get()._startPolling(data.assignment_id);
@@ -102,7 +91,6 @@ export const useAssignmentStore = create((set, get) => ({
     }
   },
 
-  /** Loads a single past assignment's result into state, then ResultsPage renders it. */
   loadAssignment: async (assignmentId) => {
     set({ uploading: false, uploadError: null, result: null, status: 'processing' });
     try {
@@ -128,16 +116,13 @@ export const useAssignmentStore = create((set, get) => ({
   },
 
   deleteAssignment: async (assignmentId) => {
-    // Optimistic removal
     set((s) => ({
       history: s.history.filter((a) => a.id !== assignmentId),
       historyTotal: Math.max(0, s.historyTotal - 1),
     }));
 
     try {
-      const res = await authFetch(`/api/assignments/${assignmentId}`, {
-        method: 'DELETE',
-      });
+      const res = await authFetch(`/api/assignments/${assignmentId}`, { method: 'DELETE' });
 
       if (!res.ok) {
         const data = await safeJson(res);
@@ -146,7 +131,6 @@ export const useAssignmentStore = create((set, get) => ({
 
       return { ok: true };
     } catch (err) {
-      // Re-fetch to restore state on failure
       get().fetchHistory({ limit: PAGE_SIZE, offset: 0 });
       return { ok: false, error: err.message };
     }

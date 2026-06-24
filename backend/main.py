@@ -16,6 +16,7 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="Rubric-agnostic AI assignment grader with US/UK support.",
     version="1.0.0",
+    redirect_slashes=True,
 )
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
