@@ -49,7 +49,7 @@ export const useAssignmentStore = create((set, get) => ({
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (statusFilter) params.set('status_filter', statusFilter);
 
-      const res = await authFetch(`/api/assignments?${params.toString()}`);
+      const res = await authFetch(`/api/assignments/?${params.toString()}`);
       const data = await safeJson(res);
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
@@ -77,7 +77,7 @@ export const useAssignmentStore = create((set, get) => ({
     if (instructions) form.append('instructions', instructions);
 
     try {
-      const res = await authFetch('/api/assignments', { method: 'POST', body: form });
+      const res = await authFetch('/api/assignments/', { method: 'POST', body: form });
       const data = await safeJson(res);
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
