@@ -1,4 +1,6 @@
 """
+backend/app/routes/auth.py
+
 auth.py — Authentication endpoints.
 
 POST /api/auth/register        – create account
