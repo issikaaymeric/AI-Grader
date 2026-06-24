@@ -6,7 +6,7 @@
       "destination": "https://ai-grader-1kt6.onrender.com/api/:path*"
     },
     {
-      "source": "/:path*",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
