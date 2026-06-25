@@ -28,7 +28,7 @@ class TranslateResponse(BaseModel):
 @router.post("/grading-result", response_model=TranslateResponse)
 async def translate_grading_result(
     body: TranslateRequest,
-    current_user: CurrentUser = Depends(require_auth),
+    current_user: CurrentUser,
 ):
     if body.target_lang not in SUPPORTED_LANGS:
         raise HTTPException(400, f"Unsupported language: {body.target_lang}")
