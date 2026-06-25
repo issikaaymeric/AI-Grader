@@ -116,7 +116,7 @@ export default function Dashboard() {
       <div className="w-full max-w-2xl bg-white rounded-2xl shadow-lg p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">AI Grader</h1>
+          <h1 className="text-3xl font-bold text-gray-900">MindMark</h1>
           <p className="text-gray-500 mt-1">
             Upload an assignment and receive evidence-based feedback in seconds.
           </p>

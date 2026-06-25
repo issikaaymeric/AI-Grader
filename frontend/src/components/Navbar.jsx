@@ -68,7 +68,7 @@ export default function Navbar() {
   if (!user) return (
     <nav style={{ background: '#ffffff', borderBottom: '0.5px solid #e5e7eb', padding: '0 20px', display: 'flex', alignItems: 'center', height: '52px', position: 'sticky', top: 0, zIndex: 40 }}>
       <span style={{ fontSize: '20px' }}>🧠</span>
-      <span style={{ fontWeight: 500, fontSize: '15px', marginLeft: '8px' }}>Assignment Grader</span>
+      <span style={{ fontWeight: 500, fontSize: '15px', marginLeft: '8px' }}>MindMark</span>
     </nav>
   );
 
@@ -86,7 +86,7 @@ export default function Navbar() {
         )}
         <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
           <span style={{ fontSize: '20px' }}>🧠</span>
-          {!isMobile && <span style={{ fontWeight: 500, fontSize: '15px', color: '#111827' }}>AI Grader</span>}
+          {!isMobile && <span style={{ fontWeight: 500, fontSize: '15px', color: '#111827' }}>MindMark</span>}
         </Link>
 
         {!isMobile && (

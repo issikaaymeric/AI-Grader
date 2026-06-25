@@ -3,7 +3,17 @@ const path = require('path')
 
 const isDev = !app.isPackaged
 
-Menu.setApplicationMenu(null)  // ← remove native menu bar
+Menu.setApplicationMenu(null)
+
+function getIcon() {
+  if (process.platform === 'win32') {
+    return path.join(__dirname, 'public/icon.ico')
+  } else if (process.platform === 'darwin') {
+    return path.join(__dirname, 'public/icon.icns')
+  } else {
+    return path.join(__dirname, 'public/icon.png')
+  }
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -12,7 +22,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-    }
+    },
+    icon: getIcon()
   })
 
   if (isDev) {
