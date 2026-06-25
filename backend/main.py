@@ -1,6 +1,8 @@
 """
 main.py – FastAPI application entry point.
 """
+from fnmatch import translate
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,7 +10,7 @@ from app.api.routes.assignments import router as assignments_router
 from app.api.routes.rubrics import router as rubrics_router
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.auth import router as auth_router
-from app.api.routes.translate import translate
+from app.api.routes.translate import router as translate_router
 
 from app.core.config import settings
 
@@ -37,7 +39,7 @@ app.include_router(auth_router, prefix="/api", tags=["auth"])
 app.include_router(assignments_router, prefix="/api", tags=["assignments"])
 app.include_router(rubrics_router, prefix="/api", tags=["rubrics"])
 app.include_router(analytics_router, prefix="/api", tags=["analytics"])
-app.include_router(translate.router, prefix="/api", tags=["translate"])
+app.include_router(translate_router)  # prefix already set in the router
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health", tags=["ops"])

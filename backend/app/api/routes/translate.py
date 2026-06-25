@@ -2,42 +2,58 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any
 import json
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
-from auth import get_current_user
-from llm_client import run_prompt  # your existing LLM waterfall
+from app.core.dependencies import CurrentUser
+from app.services.scoring.llm_client import call_llm
+from app.core.dependencies import CurrentUser, require_auth
 
 router = APIRouter(prefix="/api/translate", tags=["translate"])
 
 SUPPORTED_LANGS = {"fr": "French"}
 
+_executor = ThreadPoolExecutor(max_workers=2)
+
+
 class TranslateRequest(BaseModel):
-    content: dict[str, Any]   # the grading result JSON
-    target_lang: str           # "fr"
+    content: dict[str, Any]
+    target_lang: str
+
 
 class TranslateResponse(BaseModel):
     translated: dict[str, Any]
 
+
 @router.post("/grading-result", response_model=TranslateResponse)
 async def translate_grading_result(
     body: TranslateRequest,
-    current_user=Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_auth),
 ):
     if body.target_lang not in SUPPORTED_LANGS:
         raise HTTPException(400, f"Unsupported language: {body.target_lang}")
 
     lang_name = SUPPORTED_LANGS[body.target_lang]
 
-    prompt = f"""Translate the following grading result JSON into {lang_name}.
-Translate only the VALUES of string fields (feedback, comments, suggestions, summaries).
-Do NOT translate keys, numeric scores, or structured fields like annotation coordinates.
-Return ONLY valid JSON with identical structure.
+    system_prompt = (
+        f"You are a translator. Translate grading feedback JSON values into {lang_name}. "
+        "Translate only string VALUES. Never translate JSON keys, numeric scores, "
+        "or annotation coordinates. Return ONLY valid JSON with identical structure. "
+        "No markdown, no explanation."
+    )
+    user_prompt = json.dumps(body.content, ensure_ascii=False, indent=2)
 
-{json.dumps(body.content, ensure_ascii=False, indent=2)}"""
-
-    raw = await run_prompt(prompt)
-
+    loop = asyncio.get_event_loop()
     try:
-        translated = json.loads(raw.strip().removeprefix("```json").removesuffix("```").strip())
+        raw = await loop.run_in_executor(
+            _executor, call_llm, system_prompt, user_prompt
+        )
+    except Exception as e:
+        raise HTTPException(502, f"LLM translation failed: {e}")
+
+    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        translated = json.loads(clean)
     except json.JSONDecodeError:
         raise HTTPException(500, "Translation returned invalid JSON")
 
