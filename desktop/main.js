@@ -7,7 +7,7 @@ Menu.setApplicationMenu(null)
 
 function getIcon() {
   if (process.platform === 'win32') {
-    return path.join(__dirname, 'public/icon.ico')
+    return path.join(__dirname, 'public/icon(1).ico')
   } else if (process.platform === 'darwin') {
     return path.join(__dirname, 'public/icon.icns')
   } else {
@@ -24,6 +24,7 @@ function createWindow() {
       contextIsolation: true,
     },
     icon: getIcon()
+
   })
 
   if (isDev) {

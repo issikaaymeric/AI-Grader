@@ -91,6 +91,7 @@ def _grade_in_thread(
         import logging
         logger = logging.getLogger(__name__)
 
+        # get_supabase() uses threading.local — each thread gets its own client.
         db = get_supabase()
         try:
             db.table("assignments").update({"status": "processing"}).eq(
@@ -216,12 +217,8 @@ async def submit_assignment(
         "status":         "pending",
     }).execute()
 
-    # Dispatch grading (Celery or thread fallback). Image description via
-    # Mistral happens inside the dispatched task, not here.
-    _dispatch(
-        assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions
-    )
-
+    # Fire audit log BEFORE dispatching the grading thread — avoids racing
+    # on the main-thread Supabase client with the background thread.
     log_event(
         "assignment.submit",
         user_id=user.sub,
@@ -233,6 +230,12 @@ async def submit_assignment(
             "has_instructions": bool(instructions),
             "image_count": len(extraction.images),
         },
+    )
+
+    # Dispatch grading (Celery or thread fallback). Image description via
+    # Mistral happens inside the dispatched task, not here.
+    _dispatch(
+        assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions
     )
 
     return {"assignment_id": assignment_id, "status": "pending"}
@@ -325,7 +328,8 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
         status=data["status"],
         result=result,
     )
-    
+
+
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_assignment(assignment_id: str, user: CurrentUser):
     """Delete an assignment (only owner or admin can delete)"""
@@ -339,8 +343,6 @@ async def delete_assignment(assignment_id: str, user: CurrentUser):
 
     if user.role.value == "student" and row.data["user_id"] != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
-
-    # Optional: Add soft delete later by setting status="deleted" instead of hard delete
 
     # Hard delete
     db.table("assignments").delete().eq("id", assignment_id).execute()
