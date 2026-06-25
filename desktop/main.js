@@ -1,7 +1,9 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, Menu } = require('electron')
 const path = require('path')
 
 const isDev = !app.isPackaged
+
+Menu.setApplicationMenu(null)  // ← remove native menu bar
 
 function createWindow() {
   const win = new BrowserWindow({
