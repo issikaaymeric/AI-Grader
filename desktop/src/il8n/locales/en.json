@@ -1,0 +1,41 @@
+{
+  "auth": {
+    "welcome": "Welcome back",
+    "subtitle": "Sign in to continue grading",
+    "email": "Email address",
+    "password": "Password",
+    "sign_in": "Sign in",
+    "no_account": "No account?",
+    "create_one": "Create one",
+    "show": "Show",
+    "hide": "Hide",
+    "redirect_notice": "Please sign in to access that page.",
+    "signing_in": "Signing in…"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "assignments": "Assignments",
+    "logout": "Log out"
+  },
+  "assignment": {
+    "submit": "Submit Assignment",
+    "grading": "Grading in progress...",
+    "done": "Grading complete",
+    "error": "Grading failed. Please retry.",
+    "upload": "Upload file",
+    "subject": "Subject",
+    "instructions": "Instructions (optional)"
+  },
+  "common": {
+    "loading": "Loading...",
+    "retry": "Retry",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "settings": {
+    "language": "Language",
+    "en": "English",
+    "fr": "French"
+  }
+}

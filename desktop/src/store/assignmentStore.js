@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useAuthStore } from './authStore';
+import { BASE_URL } from '../lib/api';
 
 function parseDetail(detail) {
   if (!detail) return 'Request failed';
@@ -49,7 +50,7 @@ export const useAssignmentStore = create((set, get) => ({
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (statusFilter) params.set('status_filter', statusFilter);
 
-      const res = await authFetch(`/api/assignments/?${params.toString()}`);
+      const res = await authFetch(`${BASE_URL}/api/assignments/?${params.toString()}`);
       const data = await safeJson(res);
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
@@ -77,7 +78,7 @@ export const useAssignmentStore = create((set, get) => ({
     if (instructions) form.append('instructions', instructions);
 
     try {
-      const res = await authFetch('/api/assignments/', { method: 'POST', body: form });
+      const res = await authFetch(`${BASE_URL}/api/assignments/`, { method: 'POST', body: form });
       const data = await safeJson(res);
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
@@ -94,7 +95,7 @@ export const useAssignmentStore = create((set, get) => ({
   loadAssignment: async (assignmentId) => {
     set({ uploading: false, uploadError: null, result: null, status: 'processing' });
     try {
-      const res = await authFetch(`/api/assignments/${assignmentId}`);
+      const res = await authFetch(`${BASE_URL}/api/assignments/${assignmentId}`);
       const data = await safeJson(res);
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
@@ -122,7 +123,7 @@ export const useAssignmentStore = create((set, get) => ({
     }));
 
     try {
-      const res = await authFetch(`/api/assignments/${assignmentId}`, { method: 'DELETE' });
+      const res = await authFetch(`${BASE_URL}/api/assignments/${assignmentId}`, { method: 'DELETE' });
 
       if (!res.ok) {
         const data = await safeJson(res);
@@ -192,4 +193,5 @@ _translateResult: async (result, targetLang) => {
   } catch {
     return null; // silently fall back to English
   }
-}}))
+}
+}));

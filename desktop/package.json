@@ -1,0 +1,37 @@
+{
+  "name": "desktop",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "build": "vite build",
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "autoprefixer": "^10.5.1",
+    "concurrently": "^10.0.3",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.1",
+    "vite": "^8.0.16",
+    "wait-on": "^9.0.10"
+  },
+  "dependencies": {
+    "i18next": "^26.3.2",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-dropzone": "^15.0.0",
+    "react-i18next": "^17.0.8",
+    "react-router-dom": "^7.18.0",
+    "zustand": "^5.0.14"
+  }
+}

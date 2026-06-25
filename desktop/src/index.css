@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@layer base {
+  /* macOS traffic-light area padding when using hiddenInset titlebar */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Drag handle for frameless/hiddenInset windows on macOS */
+  nav[data-drag-region] {
+    -webkit-app-region: drag;
+  }
+  nav[data-drag-region] button,
+  nav[data-drag-region] a {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 text-sm
+           focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white;
+  }
+  .btn-primary {
+    @apply rounded-xl bg-indigo-600 text-white font-semibold py-2.5 px-5
+           hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors flex items-center justify-center gap-2;
+  }
+}

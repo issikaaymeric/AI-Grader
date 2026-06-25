@@ -1,0 +1,42 @@
+{
+  "auth": {
+    "welcome": "Bon retour",
+    "subtitle": "Connectez-vous pour continuer la correction",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "sign_in": "Se connecter",
+    "no_account": "Pas de compte ?",
+    "create_one": "Créer un",
+    "show": "Afficher",
+    "hide": "Masquer"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "assignments": "Devoirs",
+    "logout": "Se déconnecter"
+  },
+  "assignment": {
+    "submit": "Soumettre le devoir",
+    "grading": "Correction en cours...",
+    "done": "Correction terminée",
+    "error": "Échec de la correction. Veuillez réessayer.",
+    "upload": "Téléverser un fichier",
+    "subject": "Matière",
+    "instructions": "Instructions (optionnel)",
+    "redirect_notice": "Veuillez vous connecter pour accéder à cette page.",
+    "hide": "Masquer",
+    "signing_in": "Connexion en cours…"
+  },
+  "common": {
+    "loading": "Chargement...",
+    "retry": "Réessayer",
+    "delete": "Supprimer",
+    "cancel": "Annuler",
+    "save": "Enregistrer"
+  },
+  "settings": {
+    "language": "Langue",
+    "en": "Anglais",
+    "fr": "Français"
+  }
+}
