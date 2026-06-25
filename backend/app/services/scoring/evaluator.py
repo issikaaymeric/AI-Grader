@@ -28,6 +28,10 @@ from app.services.scoring.text_annotator import annotate
 
 logger = logging.getLogger(__name__)
 
+# Submission chars sent to the LLM. 8 000 chars ≈ 2 000 tokens, leaving
+# plenty of output budget even on providers with a ~4 096-token output cap.
+_SUBMISSION_CHAR_LIMIT = 8_000
+
 
 # ── Prompt construction ──────────────────────────────────────────────────────
 
@@ -89,11 +93,18 @@ def _build_user_prompt(
     )
 
     instructions_alignment_field = (
-        '      "instructions_alignment": '
-        '"1-2 sentences on whether the submission addressed the assignment brief, '
-        'and what (if anything) it missed.",\n'
+        '      "instructions_alignment": "1-2 sentences on whether the submission '
+        'addressed the assignment brief, and what (if anything) it missed.",\n'
         if has_instructions
         else '      "instructions_alignment": null,\n'
+    )
+
+    # Truncate submission to stay within provider output budgets.
+    truncated = submission[:_SUBMISSION_CHAR_LIMIT]
+    truncation_note = (
+        f"  ← [truncated to {_SUBMISSION_CHAR_LIMIT} chars]"
+        if len(submission) > _SUBMISSION_CHAR_LIMIT
+        else ""
     )
 
     return textwrap.dedent(f"""
@@ -111,9 +122,9 @@ def _build_user_prompt(
     {dimensions_block}
     }}
 
-    SUBMISSION TEXT
+    SUBMISSION TEXT{truncation_note}
     ---------------
-    {submission[:12000]}  ← [truncated to 12 000 chars if longer]
+    {truncated}
 
     INSTRUCTIONS FOR YOU (the evaluator)
     -------------------------------------
@@ -133,37 +144,43 @@ def _build_user_prompt(
            - "suggestion": a concrete, one-sentence fix or reinforcement
 
     Then:
-      - Write a ONE-SENTENCE summary capturing the overall verdict
-        (e.g. "A well-evidenced argument let down by inconsistent structure").
+      - Write a ONE-SENTENCE summary capturing the overall verdict.
       - Compute a weighted aggregate score using the weights above.
       - Identify Strengths, Weaknesses, Opportunities, Threats (SWOT).
         Each item should be specific to THIS submission, not generic advice.
-      - Write 2-4 ranked next_steps: concrete, actionable instructions the
-        student can follow to improve their NEXT submission, ordered by
-        expected impact (highest-impact first). Each should be one sentence,
-        specific, and tied to something observed in this submission.
-      - Write an anchored_feedback narrative (3-5 paragraphs) that cites
-        specific passages and notes whether the assignment instructions
-        were fully addressed.
+      - Write 2-4 ranked next_steps: concrete, actionable instructions ordered
+        by expected impact (highest-impact first). One sentence each.
+      - Write an anchored_feedback narrative (3-5 paragraphs) citing specific
+        passages and noting whether the assignment instructions were addressed.
 
-    REQUIRED JSON SCHEMA (respond with this exact structure):
-    
-      "chain_of_thought": ["step1 reasoning ...", "step2 ..."],
+    REQUIRED JSON SCHEMA — respond with this EXACT structure and nothing else:
+    {{
+      "chain_of_thought": ["step 1 reasoning ...", "step 2 ..."],
       "summary": "One-sentence overall verdict.",
 {instructions_alignment_field}      "dimension_scores": {{
         "<dim_name>": {{
-        "score": <0-100>,
-        "evidence": ["[P1, L2] quote...", "[P3, L9] quote..."],
-        "chain_of_thought": "Rationale...",
-        "annotations": [
-          {{
-            "location": "P2, L8",
-            "quote": "exact sentence from submission",
-            "issue": "The claim is unsupported by any cited source.",
-            "suggestion": "Add an in-text citation referencing the theoretical framework introduced in your introduction."
-          }}
-        ]
-      }}
+          "score": 0,
+          "evidence": ["[P1, L2] quote...", "[P3, L9] quote..."],
+          "chain_of_thought": "Rationale ...",
+          "annotations": [
+            {{
+              "location": "P2, L8",
+              "quote": "exact sentence from submission",
+              "issue": "What is wrong or strong here.",
+              "suggestion": "Concrete one-sentence fix or reinforcement."
+            }}
+          ]
+        }}
+      }},
+      "swot": {{
+        "strengths":     ["specific strength 1", "specific strength 2"],
+        "weaknesses":    ["specific weakness 1", "specific weakness 2"],
+        "opportunities": ["opportunity 1"],
+        "threats":       ["threat 1"]
+      }},
+      "next_steps": ["Highest-impact action.", "Second action.", "Third action."],
+      "anchored_feedback": "3-5 paragraph narrative citing specific passages.",
+      "aggregate_score": 0
     }}
     """).strip()
 
@@ -197,11 +214,11 @@ def _assemble_result(raw_llm: dict, rubric: Rubric, system: GradingSystem, assig
             chain_of_thought=data.get("chain_of_thought", ""),
             annotations=annotations,
         )
-        
+
     def _loc_sort_key(a: LineAnnotation) -> tuple[int, int]:
         m = re.match(r"P(\d+),\s*L(\d+)", a.location)
         return (int(m.group(1)), int(m.group(2))) if m else (999, 999)
-    
+
     all_annotations.sort(key=_loc_sort_key)
 
     final_score = apply_grading_mode(raw_scores, weights, rubric.grading_mode.value)
@@ -213,8 +230,6 @@ def _assemble_result(raw_llm: dict, rubric: Rubric, system: GradingSystem, assig
         opportunities=swot_raw.get("opportunities", []),
         threats=swot_raw.get("threats", []),
     )
-    
-
 
     return GradingResult(
         assignment_id=assignment_id,
@@ -255,18 +270,17 @@ def evaluate(
     if assignment_id is None:
         assignment_id = str(uuid.uuid4())
 
-    # FIXED CALL
     user_prompt = _build_user_prompt(
-        annotated.annotated_text,   # annotated version with [P1, L1] labels
+        annotated.annotated_text,
         rubric,
         grading_system,
         subject,
-        instructions
+        instructions,
     )
 
     logger.info(
-        "Evaluating assignment=%s system=%s rubric=%s has_instructions=%s",
-        assignment_id, grading_system.value, rubric.name, bool(instructions),
+        "Evaluating assignment=%s system=%s rubric=%s has_instructions=%s prompt_chars=%d",
+        assignment_id, grading_system.value, rubric.name, bool(instructions), len(user_prompt),
     )
 
     raw_llm = call_llm_json(_SYSTEM_PROMPT, user_prompt)
