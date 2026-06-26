@@ -1,12 +1,12 @@
-import './i18n/index.js';
+import './i18n/index';
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/authStore";
-import Navbar from "./components/Navbar";
+import Navbar from "./pages/Navbar";
 import Dashboard from "./pages/Dashboard";
 import ResultsPage from "./pages/ResultsPage";
 import MyGradesPage from "./pages/MyGradesPage";
-import LoginPage from "./auth/LoginPage";
-import RegisterPage from "./auth/RegisterPage";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 
