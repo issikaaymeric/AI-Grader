@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
 const isDev = !app.isPackaged
@@ -19,12 +20,11 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
+    icon: getIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
     },
-    icon: getIcon()
-
   })
 
   if (isDev) {
@@ -35,7 +35,13 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+
+  if (!isDev) {
+    autoUpdater.checkForUpdatesAndNotify()
+  }
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

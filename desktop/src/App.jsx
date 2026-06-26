@@ -6,6 +6,8 @@ import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import MyGradesPage from './pages/MyGradesPage';
 import ResultsPage from './pages/ResultsPage';
+import ProfilePage from './pages/ProfilePage';
+import SettingsPage from './pages/SettingsPage';
 
 function RequireAuth({ children }) {
   const { user } = useAuthStore();
@@ -23,6 +25,12 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={
             <RequireAuth><Dashboard /></RequireAuth>
+          } />
+          <Route path="/profile" element={
+            <RequireAuth><ProfilePage /></RequireAuth>
+          } />
+          <Route path="/settings" element={
+            <RequireAuth><SettingsPage /></RequireAuth>
           } />
           <Route path="/grades" element={
             <RequireAuth><MyGradesPage /></RequireAuth>

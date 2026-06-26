@@ -14,8 +14,13 @@
   "license": "ISC",
   "type": "commonjs",
   "build": {
-    "appId": "com.aigrader.desktop",
-    "productName": "AI Grader",
+    "appId": "com.mindmark.desktop",
+    "productName": "MindMark",
+    "publish": {
+      "provider": "github",
+      "owner": "issikaaymeric",
+      "repo": "AI-Grader"
+    },
     "directories": {
       "output": "dist-electron"
     },
@@ -50,6 +55,7 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "i18next": "^26.3.2",
     "i18next-browser-languagedetector": "^8.2.1",
     "react": "^19.2.7",
@@ -57,6 +63,7 @@
     "react-dropzone": "^15.0.0",
     "react-i18next": "^17.0.8",
     "react-router-dom": "^7.18.0",
+    "recharts": "^3.9.0",
     "zustand": "^5.0.14"
   }
 }

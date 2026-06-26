@@ -20,10 +20,38 @@ class TranslateRequest(BaseModel):
     content: dict[str, Any]
     target_lang: str
 
-
 class TranslateResponse(BaseModel):
     translated: dict[str, Any]
 
+class InsightRequest(BaseModel):
+    history: list[dict[str, Any]]
+
+class InsightResponse(BaseModel):
+    insight: str
+
+@router.post("/insight", response_model=InsightResponse)
+async def generate_insight(
+    body: InsightRequest,
+    current_user: CurrentUser,
+):
+    if not body.history:
+        raise HTTPException(400, "No history provided")
+
+    system_prompt = (
+        "You are an academic performance coach. Analyze the student's grading history "
+        "and write a concise 3-4 sentence insight: what they're doing well, where they "
+        "struggle, and one actionable recommendation. Be specific and encouraging. "
+        "Plain text only, no markdown."
+    )
+    user_prompt = json.dumps(body.history, ensure_ascii=False)
+
+    loop = asyncio.get_event_loop()
+    try:
+        raw = await loop.run_in_executor(_executor, call_llm, system_prompt, user_prompt)
+    except Exception as e:
+        raise HTTPException(502, f"LLM failed: {e}")
+
+    return InsightResponse(insight=raw.strip())
 
 @router.post("/grading-result", response_model=TranslateResponse)
 async def translate_grading_result(
