@@ -7,7 +7,8 @@
     "dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
     "build": "vite build",
     "electron:build": "vite build && electron-builder",
-    "start": "electron ."
+    "start": "electron .",
+    "electron:publish": "vite build && electron-builder --publish always"
   },
   "keywords": [],
   "author": "",
