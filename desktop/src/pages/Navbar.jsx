@@ -42,21 +42,19 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [open, setOpen]           = useState(false);
+  const [open, setOpen]             = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobile, setIsMobile]   = useState(getIsMobile);  // lazy init — no crash risk
+  const [isMobile, setIsMobile]     = useState(getIsMobile);
 
   const popoverRef = useRef(null);
   const navRef     = useRef(null);
 
-  // Resize listener
   useEffect(() => {
     const onResize = () => setIsMobile(getIsMobile());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Close popover on outside click
   useEffect(() => {
     const handler = (e) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target)) setOpen(false);
@@ -65,14 +63,13 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Close menus on route change
   useEffect(() => {
     setOpen(false);
     setMobileOpen(false);
   }, [location.pathname]);
 
-  const links  = NAV_LINKS[user?.role] ?? NAV_LINKS.student;
-  const badge  = ROLE_BADGE[user?.role] ?? { bg: '#F3F4F6', color: '#374151' };
+  const links = NAV_LINKS[user?.role] ?? NAV_LINKS.student;
+  const badge = ROLE_BADGE[user?.role] ?? { bg: '#F3F4F6', color: '#374151' };
 
   const handleLogout = () => {
     setOpen(false);
@@ -81,18 +78,16 @@ export default function Navbar() {
   };
 
   return (
-    // position: relative is required so the absolute mobile drawer is contained
     <nav ref={navRef} style={{
       position: 'sticky', top: 0, zIndex: 40,
       background: '#ffffff',
       borderBottom: '1px solid #EDE9FE',
       boxShadow: '0 1px 8px rgba(124,58,237,0.06)',
     }}>
-      {/* ── Main bar ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         height: '54px', padding: '0 20px',
-        position: 'relative',   // ← contains the absolute mobile drawer
+        position: 'relative',
       }}>
 
         {/* Left: hamburger + logo + desktop links */}
@@ -111,9 +106,11 @@ export default function Navbar() {
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '7px', textDecoration: 'none' }}>
             <span style={{ fontSize: '22px' }}>🧠</span>
             {!isMobile && (
-              <span style={{ fontWeight: 700, fontSize: '15px',
-                             background: `linear-gradient(90deg, ${BRAND.primary}, ${BRAND.muted})`,
-                             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              <span style={{
+                fontWeight: 700, fontSize: '15px',
+                background: `linear-gradient(90deg, ${BRAND.primary}, ${BRAND.muted})`,
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              }}>
                 MindMark
               </span>
             )}
@@ -145,7 +142,6 @@ export default function Navbar() {
               </span>
             )}
 
-            {/* Avatar + popover */}
             <div ref={popoverRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setOpen((v) => !v)}
@@ -181,7 +177,6 @@ export default function Navbar() {
                   borderRadius: '14px', padding: '4px', minWidth: '190px',
                   boxShadow: '0 8px 24px rgba(124,58,237,0.12)',
                 }}>
-                  {/* User info header */}
                   <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #f3f4f6' }}>
                     <p style={{ fontSize: '12px', fontWeight: 600, margin: 0, color: '#111827' }}>{user.name}</p>
                     <p style={{ fontSize: '10px', color: '#9ca3af', margin: '2px 0 0' }}>{user.email}</p>
@@ -198,7 +193,7 @@ export default function Navbar() {
           </div>
         )}
 
-        {/* Mobile drawer — inside the relative div so it's contained */}
+        {/* Mobile drawer */}
         {isMobile && mobileOpen && user && (
           <div style={{
             position: 'absolute', top: '54px', left: 0, right: 0,
