@@ -1,4 +1,4 @@
-import './il8n/index'
+import './i18n/index'
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
