@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
-import { BASE_URL } from '../lib/api';
+
 
 async function authFetch(path, options = {}, token) {
   const headers = { 'Content-Type': 'application/json', ...options.headers };
@@ -94,7 +94,7 @@ export default function SettingsPage() {
     setProfileLoading(true);
     try {
       const res = await authFetch(
-        `${BASE_URL}/api/auth/me`,
+        `/api/auth/me`,
         { method: 'PATCH', body: JSON.stringify(profile) },
         accessToken
       );
@@ -114,7 +114,7 @@ export default function SettingsPage() {
     setPwLoading(true);
     try {
       const res = await authFetch(
-        `${BASE_URL}/api/auth/change-password`,
+        `/api/auth/change-password`,
         { method: 'POST', body: JSON.stringify({ current_password: pw.current, new_password: pw.next }) },
         accessToken
       );
@@ -133,7 +133,7 @@ export default function SettingsPage() {
     setDeleting(true);
     try {
       const res = await authFetch(
-        `${BASE_URL}/api/auth/me`,
+        `/api/auth/me`,
         { method: 'DELETE' },
         accessToken
       );

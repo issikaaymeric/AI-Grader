@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { useAuthStore } from '../store/authStore';
 import { useAssignmentStore } from '../store/assignmentStore';
-import { BASE_URL } from '../lib/api';
+
 
 // ── AI insight fetch ────────────────────────────────────────────────────────
 async function fetchAIInsight(history, token) {
@@ -18,7 +18,7 @@ async function fetchAIInsight(history, token) {
     swot: a.result?.swot ?? null,
   }));
 
-  const res = await fetch(`${BASE_URL}/api/translate/insight`, {
+  const res = await fetch(`/api/translate/insight`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
