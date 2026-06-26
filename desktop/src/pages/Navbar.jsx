@@ -2,34 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 
-const ROLE_BADGE = {
-  student: { bg: '#EFF6FF', color: '#1D4ED8' },
-  professor: { bg: '#EEF2FF', color: '#4338CA' },
-  admin: { bg: '#FEF2F2', color: '#DC2626' },
-};
+const BRAND = { primary: '#7C3AED', light: '#EDE9FE', muted: '#9333EA' };
 
-const AVATAR_COLORS = {
-  student: { bg: '#EFF6FF', color: '#1D4ED8' },
-  professor: { bg: '#EEF2FF', color: '#4338CA' },
-  admin: { bg: '#FEF2F2', color: '#DC2626' },
+const ROLE_BADGE = {
+  student:   { bg: '#EDE9FE', color: '#7C3AED' },
+  professor: { bg: '#FCE7F3', color: '#BE185D' },
+  admin:     { bg: '#FEE2E2', color: '#DC2626' },
 };
 
 const NAV_LINKS = {
   student: [
-    { to: '/', icon: 'ti-upload', label: 'Submit' },
-    { to: '/grades', icon: 'ti-file-text', label: 'My grades' },
+    { to: '/',       label: 'Submit'    },
+    { to: '/grades', label: 'My Grades' },
   ],
   professor: [
-    { to: '/', icon: 'ti-upload', label: 'Submissions' },
-    { to: '/grades', icon: 'ti-file-text', label: 'All grades' },
-    { to: '/rubrics', icon: 'ti-list-check', label: 'Rubrics' },
-    { to: '/analytics', icon: 'ti-chart-bar', label: 'Analytics' },
+    { to: '/',          label: 'Submissions' },
+    { to: '/grades',    label: 'All Grades'  },
+    { to: '/rubrics',   label: 'Rubrics'     },
+    { to: '/analytics', label: 'Analytics'   },
   ],
   admin: [
-    { to: '/', icon: 'ti-upload', label: 'Submissions' },
-    { to: '/grades', icon: 'ti-file-text', label: 'All grades' },
-    { to: '/rubrics', icon: 'ti-list-check', label: 'Rubrics' },
-    { to: '/analytics', icon: 'ti-chart-bar', label: 'Analytics' },
+    { to: '/',          label: 'Submissions' },
+    { to: '/grades',    label: 'All Grades'  },
+    { to: '/rubrics',   label: 'Rubrics'     },
+    { to: '/analytics', label: 'Analytics'   },
   ],
 };
 
@@ -37,109 +33,215 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 }
 
+function getIsMobile() {
+  return typeof window !== 'undefined' && window.innerWidth < 768;
+}
+
 export default function Navbar() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const [open, setOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const popoverRef = useRef(null);
 
+  const [open, setOpen]           = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile]   = useState(getIsMobile);  // lazy init — no crash risk
+
+  const popoverRef = useRef(null);
+  const navRef     = useRef(null);
+
+  // Resize listener
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const onResize = () => setIsMobile(getIsMobile());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // Close popover on outside click
   useEffect(() => {
-    function handler(e) {
+    const handler = (e) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target)) setOpen(false);
-    }
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Close menus on route change
   useEffect(() => {
     setOpen(false);
     setMobileOpen(false);
   }, [location.pathname]);
 
-  if (!user) return (
-    <nav style={{ background: '#ffffff', borderBottom: '0.5px solid #e5e7eb', padding: '0 20px', display: 'flex', alignItems: 'center', height: '52px', position: 'sticky', top: 0, zIndex: 40 }}>
-      <span style={{ fontSize: '20px' }}>🧠</span>
-      <span style={{ fontWeight: 500, fontSize: '15px', marginLeft: '8px' }}>MindMark</span>
-    </nav>
-  );
+  const links  = NAV_LINKS[user?.role] ?? NAV_LINKS.student;
+  const badge  = ROLE_BADGE[user?.role] ?? { bg: '#F3F4F6', color: '#374151' };
 
-  const links = NAV_LINKS[user.role] ?? NAV_LINKS.student;
-  const badge = ROLE_BADGE[user.role] ?? { bg: '#F3F4F6', color: '#374151' };
-  const avatar = AVATAR_COLORS[user.role] ?? { bg: '#F3F4F6', color: '#374151' };
+  const handleLogout = () => {
+    setOpen(false);
+    logout();
+    navigate('/login');
+  };
 
   return (
-    <nav style={{ background: '#ffffff', borderBottom: '0.5px solid #e5e7eb', padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '52px', position: 'sticky', top: 0, zIndex: 40 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-        {isMobile && (
-          <button onClick={() => setMobileOpen(!mobileOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}>
-            {mobileOpen ? '✕' : '☰'}
-          </button>
-        )}
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
-          <span style={{ fontSize: '20px' }}>🧠</span>
-          {!isMobile && <span style={{ fontWeight: 500, fontSize: '15px', color: '#111827' }}>MindMark</span>}
-        </Link>
+    // position: relative is required so the absolute mobile drawer is contained
+    <nav ref={navRef} style={{
+      position: 'sticky', top: 0, zIndex: 40,
+      background: '#ffffff',
+      borderBottom: '1px solid #EDE9FE',
+      boxShadow: '0 1px 8px rgba(124,58,237,0.06)',
+    }}>
+      {/* ── Main bar ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: '54px', padding: '0 20px',
+        position: 'relative',   // ← contains the absolute mobile drawer
+      }}>
 
-        {!isMobile && (
-          <>
-            <div style={{ width: '1px', height: '20px', background: '#e5e7eb' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-              {links.map((l) => <NavLink key={l.to} {...l} isActive={location.pathname === l.to} />)}
-            </div>
-          </>
-        )}
-      </div>
+        {/* Left: hamburger + logo + desktop links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isMobile && (
+            <button
+              onClick={() => setMobileOpen((v) => !v)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer',
+                       fontSize: '18px', color: BRAND.primary, padding: '4px' }}
+              aria-label="Toggle menu"
+            >
+              {mobileOpen ? '✕' : '☰'}
+            </button>
+          )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        {!isMobile && (
-          <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '99px', textTransform: 'capitalize', background: badge.bg, color: badge.color }}>
-            {user.role}
-          </span>
-        )}
-        <div ref={popoverRef} style={{ position: 'relative' }}>
-          <button onClick={() => setOpen(!open)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 10px 4px 6px', borderRadius: '12px', border: `0.5px solid ${open ? '#9ca3af' : '#e5e7eb'}`, background: open ? '#f3f4f6' : 'transparent', cursor: 'pointer' }}>
-            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: avatar.bg, color: avatar.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 500 }}>
-              {initials(user.name)}
-            </div>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '7px', textDecoration: 'none' }}>
+            <span style={{ fontSize: '22px' }}>🧠</span>
             {!isMobile && (
-              <div style={{ textAlign: 'left', lineHeight: 1 }}>
-                <p style={{ fontSize: '12px', fontWeight: 500, margin: 0 }}>{user.name}</p>
-                <p style={{ fontSize: '10px', color: '#9ca3af', margin: 0 }}>{user.email}</p>
-              </div>
+              <span style={{ fontWeight: 700, fontSize: '15px',
+                             background: `linear-gradient(90deg, ${BRAND.primary}, ${BRAND.muted})`,
+                             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                MindMark
+              </span>
             )}
-          </button>
-          {open && (
-            <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#ffffff', border: '0.5px solid #d1d5db', borderRadius: '12px', padding: '4px', minWidth: '180px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-              <PopoverItem label="Profile" onClick={() => { setOpen(false); navigate('/profile'); }} />
-              <PopoverItem label="Settings" onClick={() => { setOpen(false); navigate('/settings'); }} />
-              <div style={{ height: '0.5px', background: '#e5e7eb', margin: '4px 0' }} />
-              <PopoverItem label="Sign out" onClick={() => { setOpen(false); logout(); navigate('/login'); }} danger />
-            </div>
+          </Link>
+
+          {!isMobile && user && (
+            <>
+              <div style={{ width: '1px', height: '20px', background: '#EDE9FE' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                {links.map((l) => (
+                  <DesktopNavLink key={l.to} {...l} isActive={location.pathname === l.to} />
+                ))}
+              </div>
+            </>
           )}
         </div>
-      </div>
 
-      {isMobile && mobileOpen && (
-        <div style={{ position: 'absolute', top: '52px', left: 0, width: '100%', background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {links.map((l) => <NavLink key={l.to} {...l} isActive={location.pathname === l.to} />)}
-        </div>
-      )}
+        {/* Right: role badge + avatar */}
+        {user && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {!isMobile && (
+              <span style={{
+                fontSize: '11px', fontWeight: 600, padding: '3px 10px',
+                borderRadius: '99px', textTransform: 'capitalize',
+                background: badge.bg, color: badge.color,
+                border: `1px solid ${badge.color}22`,
+              }}>
+                {user.role}
+              </span>
+            )}
+
+            {/* Avatar + popover */}
+            <div ref={popoverRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setOpen((v) => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '4px 10px 4px 5px', borderRadius: '12px', cursor: 'pointer',
+                  border: `1px solid ${open ? BRAND.primary : '#EDE9FE'}`,
+                  background: open ? BRAND.light : 'transparent',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div style={{
+                  width: '28px', height: '28px', borderRadius: '50%',
+                  background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.muted})`,
+                  color: '#fff', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', fontSize: '11px', fontWeight: 700,
+                }}>
+                  {initials(user.name)}
+                </div>
+                {!isMobile && (
+                  <div style={{ textAlign: 'left', lineHeight: 1.3 }}>
+                    <p style={{ fontSize: '12px', fontWeight: 600, margin: 0, color: '#111827' }}>{user.name}</p>
+                    <p style={{ fontSize: '10px', color: '#9ca3af', margin: 0 }}>{user.email}</p>
+                  </div>
+                )}
+                <span style={{ fontSize: '10px', color: '#9ca3af', marginLeft: '2px' }}>▾</span>
+              </button>
+
+              {open && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                  background: '#fff', border: '1px solid #EDE9FE',
+                  borderRadius: '14px', padding: '4px', minWidth: '190px',
+                  boxShadow: '0 8px 24px rgba(124,58,237,0.12)',
+                }}>
+                  {/* User info header */}
+                  <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #f3f4f6' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 600, margin: 0, color: '#111827' }}>{user.name}</p>
+                    <p style={{ fontSize: '10px', color: '#9ca3af', margin: '2px 0 0' }}>{user.email}</p>
+                  </div>
+                  <div style={{ paddingTop: '4px' }}>
+                    <PopoverItem label="👤  Profile"  onClick={() => { setOpen(false); navigate('/profile');  }} />
+                    <PopoverItem label="⚙️  Settings" onClick={() => { setOpen(false); navigate('/settings'); }} />
+                    <div style={{ height: '1px', background: '#f3f4f6', margin: '4px 0' }} />
+                    <PopoverItem label="Sign out" onClick={handleLogout} danger />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile drawer — inside the relative div so it's contained */}
+        {isMobile && mobileOpen && user && (
+          <div style={{
+            position: 'absolute', top: '54px', left: 0, right: 0,
+            background: '#fff', borderBottom: '1px solid #EDE9FE',
+            padding: '8px 16px 12px', display: 'flex', flexDirection: 'column', gap: '2px',
+            boxShadow: '0 4px 12px rgba(124,58,237,0.08)',
+            zIndex: 39,
+          }}>
+            {links.map((l) => (
+              <MobileNavLink key={l.to} {...l} isActive={location.pathname === l.to} />
+            ))}
+            <div style={{ height: '1px', background: '#EDE9FE', margin: '6px 0' }} />
+            <MobileNavLink to="/profile"  label="Profile"  isActive={location.pathname === '/profile'}  />
+            <MobileNavLink to="/settings" label="Settings" isActive={location.pathname === '/settings'} />
+          </div>
+        )}
+      </div>
     </nav>
   );
 }
 
-function NavLink({ to, label, isActive }) {
+function DesktopNavLink({ to, label, isActive }) {
   return (
-    <Link to={to} style={{ padding: '8px 12px', borderRadius: '8px', textDecoration: 'none', fontSize: '13px', color: isActive ? '#111827' : '#6b7280', background: isActive ? '#f3f4f6' : 'transparent', transition: '0.2s' }}>
+    <Link to={to} style={{
+      padding: '6px 12px', borderRadius: '8px', textDecoration: 'none',
+      fontSize: '13px', fontWeight: isActive ? 600 : 400,
+      color: isActive ? BRAND.primary : '#6b7280',
+      background: isActive ? BRAND.light : 'transparent',
+      transition: 'all 0.15s',
+    }}>
+      {label}
+    </Link>
+  );
+}
+
+function MobileNavLink({ to, label, isActive }) {
+  return (
+    <Link to={to} style={{
+      padding: '10px 12px', borderRadius: '10px', textDecoration: 'none',
+      fontSize: '14px', fontWeight: isActive ? 600 : 400,
+      color: isActive ? BRAND.primary : '#374151',
+      background: isActive ? BRAND.light : 'transparent',
+    }}>
       {label}
     </Link>
   );
@@ -147,7 +249,15 @@ function NavLink({ to, label, isActive }) {
 
 function PopoverItem({ label, onClick, danger }) {
   return (
-    <button onClick={onClick} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none', fontSize: '13px', color: danger ? '#DC2626' : '#374151', cursor: 'pointer', borderRadius: '6px' }}>
+    <button onClick={onClick} style={{
+      width: '100%', textAlign: 'left', padding: '8px 12px',
+      border: 'none', background: 'none', fontSize: '13px', cursor: 'pointer',
+      borderRadius: '8px', color: danger ? '#DC2626' : '#374151',
+      transition: 'background 0.1s',
+    }}
+      onMouseEnter={(e) => e.currentTarget.style.background = danger ? '#FEF2F2' : '#F9FAFB'}
+      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+    >
       {label}
     </button>
   );

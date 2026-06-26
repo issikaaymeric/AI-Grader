@@ -1,46 +1,44 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from './store/authStore';
-import Navbar from './pages/Navbar';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import Dashboard from './pages/Dashboard';
-import MyGradesPage from './pages/MyGradesPage';
-import ResultsPage from './pages/ResultsPage';
-import ProfilePage from './pages/ProfilePage';
-import SettingsPage from './pages/SettingsPage';
+import './i18n/index.js';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
+import Navbar from "./components/Navbar";
+import Dashboard from "./pages/Dashboard";
+import ResultsPage from "./pages/ResultsPage";
+import MyGradesPage from "./pages/MyGradesPage";
+import LoginPage from "./auth/LoginPage";
+import RegisterPage from "./auth/RegisterPage";
+import ProfilePage from "./pages/ProfilePage";
+import SettingsPage from "./pages/SettingsPage";
 
-function RequireAuth({ children }) {
-  const { user } = useAuthStore();
+function ProtectedRoute({ children }) {
+  const user = useAuthStore((state) => state.user);
   if (!user) return <Navigate to="/login" replace />;
-  return children;
+  return (
+    <>
+      <Navbar />
+      <main>{children}</main>
+    </>
+  );
+}
+
+function PublicRoute({ children }) {
+  const user = useAuthStore((state) => state.user);
+  return user ? <Navigate to="/" replace /> : children;
 }
 
 export default function App() {
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
-      <main className="flex-1">
-        <Routes>
-          <Route path="/login"    element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/" element={
-            <RequireAuth><Dashboard /></RequireAuth>
-          } />
-          <Route path="/profile" element={
-            <RequireAuth><ProfilePage /></RequireAuth>
-          } />
-          <Route path="/settings" element={
-            <RequireAuth><SettingsPage /></RequireAuth>
-          } />
-          <Route path="/grades" element={
-            <RequireAuth><MyGradesPage /></RequireAuth>
-          } />
-          <Route path="/results" element={
-            <RequireAuth><ResultsPage /></RequireAuth>
-          } />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login"    element={<PublicRoute><LoginPage /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+        <Route path="/"         element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/results"  element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
+        <Route path="/grades"   element={<ProtectedRoute><MyGradesPage /></ProtectedRoute>} />
+        <Route path="/profile"  element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+        <Route path="*"         element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
