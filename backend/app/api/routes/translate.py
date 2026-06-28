@@ -1,3 +1,5 @@
+# translate.py — complete fixed file
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any
@@ -7,7 +9,7 @@ import asyncio
 
 from app.core.dependencies import CurrentUser
 from app.services.scoring.llm_client import call_llm
-from app.core.dependencies import CurrentUser, require_auth
+from app.core.dependencies import require_auth
 
 router = APIRouter(prefix="/api/translate", tags=["translate"])
 
@@ -29,6 +31,38 @@ class InsightRequest(BaseModel):
 class InsightResponse(BaseModel):
     insight: str
 
+
+def _extract_insight(raw: str) -> str:
+    """
+    call_llm forces json_object mode on all providers, so even with a
+    'plain text' system prompt the model returns {"insight": "..."}
+    or some JSON envelope. Unwrap it; fall back to the raw string if
+    it genuinely isn't JSON (shouldn't happen, but be defensive).
+    """
+    text = raw.strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # Not JSON — model somehow returned plain text; use as-is.
+        return text
+
+    if isinstance(parsed, str):
+        return parsed
+
+    if isinstance(parsed, dict):
+        # Try common keys the model might choose
+        for key in ("insight", "text", "message", "content", "result", "response"):
+            if isinstance(parsed.get(key), str) and parsed[key].strip():
+                return parsed[key].strip()
+        # Last resort: concatenate all string values
+        parts = [v for v in parsed.values() if isinstance(v, str) and v.strip()]
+        if parts:
+            return " ".join(parts)
+
+    # Absolute fallback
+    return text
+
+
 @router.post("/insight", response_model=InsightResponse)
 async def generate_insight(
     body: InsightRequest,
@@ -39,9 +73,10 @@ async def generate_insight(
 
     system_prompt = (
         "You are an academic performance coach. Analyze the student's grading history "
-        "and write a concise 3-4 sentence insight: what they're doing well, where they "
-        "struggle, and one actionable recommendation. Be specific and encouraging. "
-        "Plain text only, no markdown."
+        "and return a JSON object with a single key \"insight\" whose value is a plain "
+        "string of 3-4 sentences: what they're doing well, where they struggle, and one "
+        "actionable recommendation. Be specific and encouraging. "
+        "No markdown inside the string."
     )
     user_prompt = json.dumps(body.history, ensure_ascii=False)
 
@@ -51,7 +86,9 @@ async def generate_insight(
     except Exception as e:
         raise HTTPException(502, f"LLM failed: {e}")
 
-    return InsightResponse(insight=raw.strip())
+    insight = _extract_insight(raw)
+    return InsightResponse(insight=insight)
+
 
 @router.post("/grading-result", response_model=TranslateResponse)
 async def translate_grading_result(
@@ -79,7 +116,13 @@ async def translate_grading_result(
     except Exception as e:
         raise HTTPException(502, f"LLM translation failed: {e}")
 
-    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    clean = (
+        raw.strip()
+        .removeprefix("```json")
+        .removeprefix("```")
+        .removesuffix("```")
+        .strip()
+    )
     try:
         translated = json.loads(clean)
     except json.JSONDecodeError:

@@ -157,11 +157,8 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (history.length === 0) return;
-    setInsightLoading(true);
-    fetchAIInsight(history, accessToken)
-      .then(setInsight)
-      .finally(() => setInsightLoading(false));
+    if (history.length > 0)
+      console.table(history.map(a => ({ status: a.status, score: a.result?.score })));
   }, [history]);
 
   const done = history.filter((a) => a.status === 'done');
