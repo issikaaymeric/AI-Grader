@@ -36,12 +36,14 @@ MAX_INSTRUCTIONS_CHARS = 2000 * 5  # 10k chars, ~4k words, ~20-25 pages of text
 
 
 class AssignmentSummary(BaseModel):
-    """Lightweight row for list views — no full feedback payload."""
+    """Lightweight row for list views — includes score and result for analytics."""
     id: str
     subject: str
     grading_system: str
     status: str
     grade: str | None = None
+    score: float | None = None
+    result: dict | None = None
     flagged_for_review: bool = False
     created_at: str
 
@@ -56,12 +58,6 @@ class AssignmentListResponse(BaseModel):
 # ── Grading dispatch ──────────────────────────────────────────────────────────
 
 def _describe_and_finalize_text(extraction: ExtractionResult) -> str:
-    """
-    Describe any extracted images via Mistral vision and fold the
-    descriptions into the submission text. Safe to call with no images
-    (no-op) or with no MISTRAL_API_KEY set (images just get skipped,
-    grading proceeds on text alone).
-    """
     if extraction.images and os.environ.get("MISTRAL_API_KEY"):
         try:
             describe_images(extraction.images)
@@ -82,7 +78,6 @@ def _grade_in_thread(
     rubric_dict: dict | None,
     instructions: str | None,
 ) -> None:
-    """Run grading synchronously in a background thread (no Celery needed)."""
     def _run():
         from app.schemas.grading import GradingSystem as GS, Rubric
         from app.services.scoring.subject_rubrics import get_rubric_for_subject
@@ -91,18 +86,14 @@ def _grade_in_thread(
         import logging
         logger = logging.getLogger(__name__)
 
-        # get_supabase() uses threading.local — each thread gets its own client.
         db = get_supabase()
         try:
             db.table("assignments").update({"status": "processing"}).eq(
                 "id", assignment_id
             ).execute()
 
-            # Slow Mistral vision calls happen here, off the request path.
             text = _describe_and_finalize_text(extraction)
 
-            # Explicit instructor rubric (rubric_id) always wins. Otherwise,
-            # fall back to the per-subject default rubric.
             rubric = Rubric(**rubric_dict) if rubric_dict else get_rubric_for_subject(subject)
             result = evaluate(
                 submission_text=text,
@@ -116,6 +107,7 @@ def _grade_in_thread(
             db.table("assignments").update({
                 "status": "done",
                 "grade": result.letter_grade,
+                "score": result.score,
                 "feedback_json": result.model_dump_json(),
                 "swot_analysis": result.swot.model_dump_json(),
                 "flagged_for_review": result.flag_for_review,
@@ -133,7 +125,6 @@ def _grade_in_thread(
 
 
 def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, instructions):
-    """Try Celery; fall back to thread if Redis/Celery is unavailable."""
     try:
         from app.services.multi_process.tasks import grade_assignment
         grade_assignment.delay(
@@ -178,8 +169,6 @@ async def submit_assignment(
         )
 
     try:
-        # Fast path only: extract text + images, anonymise, but do NOT call
-        # Mistral here — that happens later in the background grading task.
         extraction = extract(content, file.filename or "upload.txt")
         from app.services.ingestion.extractor import anonymise
         extraction.text = anonymise(extraction.text)
@@ -189,7 +178,6 @@ async def submit_assignment(
     assignment_id = str(uuid.uuid4())
     db = get_supabase()
 
-    # Storage upload — non-fatal if bucket not configured
     file_url = None
     try:
         path = f"assignments/{assignment_id}/{file.filename}"
@@ -198,7 +186,6 @@ async def submit_assignment(
     except Exception:
         pass
 
-    # Resolve custom rubric
     rubric_dict: dict | None = None
     if rubric_id:
         row = db.table("rubrics").select("*").eq("id", rubric_id).single().execute()
@@ -206,7 +193,6 @@ async def submit_assignment(
             raise HTTPException(status_code=404, detail="Rubric not found.")
         rubric_dict = row.data.get("criteria")
 
-    # Persist record (instructions stored for audit/re-grade purposes)
     db.table("assignments").insert({
         "id":             assignment_id,
         "user_id":        user.sub,
@@ -217,8 +203,6 @@ async def submit_assignment(
         "status":         "pending",
     }).execute()
 
-    # Fire audit log BEFORE dispatching the grading thread — avoids racing
-    # on the main-thread Supabase client with the background thread.
     log_event(
         "assignment.submit",
         user_id=user.sub,
@@ -232,8 +216,6 @@ async def submit_assignment(
         },
     )
 
-    # Dispatch grading (Celery or thread fallback). Image description via
-    # Mistral happens inside the dispatched task, not here.
     _dispatch(
         assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions
     )
@@ -248,16 +230,12 @@ async def list_assignments(
     limit: int = 20,
     offset: int = 0,
 ):
-    """
-    List assignments — students see only their own; professors/admins see all.
-    Supports basic pagination and an optional status filter.
-    """
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
 
     db = get_supabase()
     query = db.table("assignments").select(
-        "id, subject, grading_system, status, grade, flagged_for_review, created_at, user_id",
+        "id, subject, grading_system, status, grade, score, feedback_json, flagged_for_review, created_at, user_id",
         count="exact",
     )
 
@@ -280,6 +258,9 @@ async def list_assignments(
             grading_system=r["grading_system"],
             status=r["status"],
             grade=r.get("grade"),
+            score=r.get("score"),
+            result=json.loads(r["feedback_json"])
+                   if r.get("feedback_json") else None,
             flagged_for_review=bool(r.get("flagged_for_review")),
             created_at=r["created_at"],
         )
@@ -291,7 +272,6 @@ async def list_assignments(
 
 @router.get("/{assignment_id}", response_model=AssignmentStatusResponse)
 async def get_assignment(assignment_id: str, user: CurrentUser):
-    # Cache-first
     cached = cache_get(f"result:{assignment_id}")
     if cached:
         if user.role.value == "student":
@@ -305,7 +285,7 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
     row = (
         get_supabase()
         .table("assignments")
-        .select("id, user_id, status, grade, feedback_json, flagged_for_review")
+        .select("id, user_id, status, grade, score, feedback_json, flagged_for_review")
         .eq("id", assignment_id)
         .single()
         .execute()
@@ -332,10 +312,8 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_assignment(assignment_id: str, user: CurrentUser):
-    """Delete an assignment (only owner or admin can delete)"""
     db = get_supabase()
 
-    # Fetch to check ownership
     row = db.table("assignments").select("user_id").eq("id", assignment_id).single().execute()
 
     if not row.data:
@@ -344,13 +322,11 @@ async def delete_assignment(assignment_id: str, user: CurrentUser):
     if user.role.value == "student" and row.data["user_id"] != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    # Hard delete
     db.table("assignments").delete().eq("id", assignment_id).execute()
 
-    # Also try to clean up storage (non-critical)
     try:
         db.storage.from_("assignments").remove([f"assignments/{assignment_id}"])
     except Exception:
         pass
 
-    return None  # 204 No Content
+    return None
