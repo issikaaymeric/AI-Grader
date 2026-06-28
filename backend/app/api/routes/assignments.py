@@ -107,7 +107,7 @@ def _grade_in_thread(
             db.table("assignments").update({
                 "status": "done",
                 "grade": result.letter_grade,
-                "score": result.score,
+                "score": result.raw_score,   # was result.score — field is raw_score
                 "feedback_json": result.model_dump_json(),
                 "swot_analysis": result.swot.model_dump_json(),
                 "flagged_for_review": result.flag_for_review,

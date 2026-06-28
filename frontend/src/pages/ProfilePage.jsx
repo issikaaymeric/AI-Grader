@@ -168,8 +168,8 @@ export default function ProfilePage() {
       .finally(() => setInsightLoading(false));
   }, [history]);
 
-  const done = history.filter((a) => (a.score ?? a.result?.score) != null);
-  const scores = done.map((a) => a.result?.score).filter((s) => s != null);
+  const done = history.filter((a) => (a.score ?? a.result?.raw_score) != null);
+  const scores = done.map((a) => a.score ?? a.result?.raw_score).filter((s) => s != null);
   const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : '—';
   const best = scores.length ? Math.round(Math.max(...scores)) : '—';
   const trend = buildTrend(done);
