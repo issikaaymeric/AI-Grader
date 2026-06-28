@@ -157,11 +157,18 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (history.length > 0)
-      console.table(history.map(a => ({ status: a.status, score: a.result?.score })));
+    if (history.length === 0) return;
+    setInsightLoading(true);
+    fetchAIInsight(history, accessToken)
+      .then((result) => {
+        console.log('[insight]', result);  // add this
+        setInsight(result);
+      })
+      .catch((err) => console.error('[insight error]', err))  // and this
+      .finally(() => setInsightLoading(false));
   }, [history]);
 
-  const done = history.filter((a) => a.status === 'done');
+  const done = history.filter((a) => a.result?.score != null);
   const scores = done.map((a) => a.result?.score).filter((s) => s != null);
   const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : '—';
   const best = scores.length ? Math.round(Math.max(...scores)) : '—';
