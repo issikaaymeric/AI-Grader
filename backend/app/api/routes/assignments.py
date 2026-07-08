@@ -239,34 +239,26 @@ async def list_assignments(
         count="exact",
     )
 
-    if user.role.value == "student":
+    if user.role.value != "admin":
         query = query.eq("user_id", user.sub)
 
     if status_filter:
         query = query.eq("status", status_filter)
 
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
-
     res = query.execute()
     rows = res.data or []
     total = res.count or len(rows)
 
     items = [
         AssignmentSummary(
-            id=r["id"],
-            subject=r["subject"],
-            grading_system=r["grading_system"],
-            status=r["status"],
-            grade=r.get("grade"),
-            score=r.get("score"),
-            result=json.loads(r["feedback_json"])
-                   if r.get("feedback_json") else None,
-            flagged_for_review=bool(r.get("flagged_for_review")),
-            created_at=r["created_at"],
+            id=r["id"], subject=r["subject"], grading_system=r["grading_system"],
+            status=r["status"], grade=r.get("grade"), score=r.get("score"),
+            result=json.loads(r["feedback_json"]) if r.get("feedback_json") else None,
+            flagged_for_review=bool(r.get("flagged_for_review")), created_at=r["created_at"],
         )
         for r in rows
     ]
-
     return AssignmentListResponse(items=items, total=total, limit=limit, offset=offset)
 
 

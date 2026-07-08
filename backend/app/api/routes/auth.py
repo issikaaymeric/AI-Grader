@@ -17,6 +17,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.core.dependencies import CurrentUser, get_client_ip, require_auth
 from app.core.supabase import get_supabase
@@ -56,37 +57,43 @@ async def register(payload: RegisterRequest, request: Request):
     ua  = request.headers.get("User-Agent", "")
 
     # Duplicate email check
-    existing = db.table("users").select("id").eq("email", payload.email).execute()
+    existing = await run_in_threadpool(
+        lambda: db.table("users").select("id").eq("email", payload.email).execute()
+    )
     if existing.data:
         log_event("auth.register", ip_address=ip, metadata={"email": payload.email}, success=False)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered.")
 
     user_id       = str(uuid.uuid4())
-    password_hash = hash_password(payload.password)
+    password_hash = await run_in_threadpool(hash_password, payload.password)
 
-    db.table("users").insert(
-        {
-            "id":            user_id,
-            "email":         payload.email,
-            "name":          payload.name,
-            "role":          payload.role.value,
-            "password_hash": password_hash,
-            "created_at":    datetime.now(timezone.utc).isoformat(),
-        }
-    ).execute()
+    await run_in_threadpool(
+        lambda: db.table("users").insert(
+            {
+                "id":            user_id,
+                "email":         payload.email,
+                "name":          payload.name,
+                "role":          payload.role.value,
+                "password_hash": password_hash,
+                "created_at":    datetime.now(timezone.utc).isoformat(),
+            }
+        ).execute()
+    )
 
     access_token, jti = create_access_token(user_id, payload.email, payload.role)
     raw_refresh, hashed_refresh = create_refresh_token()
 
-    db.table("refresh_tokens").insert(
-        {
-            "id":         str(uuid.uuid4()),
-            "user_id":    user_id,
-            "token_hash": hashed_refresh,
-            "expires_at": _refresh_expiry_iso(),
-            "revoked":    False,
-        }
-    ).execute()
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").insert(
+            {
+                "id":         str(uuid.uuid4()),
+                "user_id":    user_id,
+                "token_hash": hashed_refresh,
+                "expires_at": _refresh_expiry_iso(),
+                "revoked":    False,
+            }
+        ).execute()
+    )
 
     log_event(
         "auth.register",
@@ -111,10 +118,18 @@ async def login(payload: LoginRequest, request: Request):
     ip  = get_client_ip(request)
     ua  = request.headers.get("User-Agent", "")
 
-    row = db.table("users").select("*").eq("email", payload.email).execute()
+    row = await run_in_threadpool(
+        lambda: db.table("users").select("*").eq("email", payload.email).execute()
+    )
 
     # Constant-time failure path — don't leak whether email exists
-    if not row.data or not verify_password(payload.password, row.data[0].get("password_hash", "")):
+    password_ok = False
+    if row.data:
+        password_ok = await run_in_threadpool(
+            verify_password, payload.password, row.data[0].get("password_hash", "")
+        )
+
+    if not row.data or not password_ok:
         log_event(
             "auth.login",
             ip_address=ip,
@@ -134,17 +149,21 @@ async def login(payload: LoginRequest, request: Request):
     raw_refresh, hashed_refresh = create_refresh_token()
 
     # Revoke any old refresh tokens for this user (single-session policy)
-    db.table("refresh_tokens").update({"revoked": True}).eq("user_id", user["id"]).execute()
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").update({"revoked": True}).eq("user_id", user["id"]).execute()
+    )
 
-    db.table("refresh_tokens").insert(
-        {
-            "id":         str(uuid.uuid4()),
-            "user_id":    user["id"],
-            "token_hash": hashed_refresh,
-            "expires_at": _refresh_expiry_iso(),
-            "revoked":    False,
-        }
-    ).execute()
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").insert(
+            {
+                "id":         str(uuid.uuid4()),
+                "user_id":    user["id"],
+                "token_hash": hashed_refresh,
+                "expires_at": _refresh_expiry_iso(),
+                "revoked":    False,
+            }
+        ).execute()
+    )
 
     log_event(
         "auth.login",
@@ -169,8 +188,8 @@ async def refresh_tokens(payload: RefreshRequest, request: Request):
     ip       = get_client_ip(request)
     token_h  = hash_refresh_token(payload.refresh_token)
 
-    row = (
-        db.table("refresh_tokens")
+    row = await run_in_threadpool(
+        lambda: db.table("refresh_tokens")
         .select("*, users(*)")
         .eq("token_hash", token_h)
         .eq("revoked", False)
@@ -187,27 +206,33 @@ async def refresh_tokens(payload: RefreshRequest, request: Request):
     # Check expiry
     exp  = datetime.fromisoformat(rt["expires_at"])
     if exp < datetime.now(timezone.utc):
-        db.table("refresh_tokens").update({"revoked": True}).eq("id", rt["id"]).execute()
+        await run_in_threadpool(
+            lambda: db.table("refresh_tokens").update({"revoked": True}).eq("id", rt["id"]).execute()
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired.")
 
     from app.schemas.auth import UserRole
     role = UserRole(user["role"])
 
     # Rotate: revoke old, issue new pair
-    db.table("refresh_tokens").update({"revoked": True}).eq("id", rt["id"]).execute()
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").update({"revoked": True}).eq("id", rt["id"]).execute()
+    )
 
     access_token, _ = create_access_token(user["id"], user["email"], role)
     raw_refresh, hashed_refresh = create_refresh_token()
 
-    db.table("refresh_tokens").insert(
-        {
-            "id":         str(uuid.uuid4()),
-            "user_id":    user["id"],
-            "token_hash": hashed_refresh,
-            "expires_at": _refresh_expiry_iso(),
-            "revoked":    False,
-        }
-    ).execute()
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").insert(
+            {
+                "id":         str(uuid.uuid4()),
+                "user_id":    user["id"],
+                "token_hash": hashed_refresh,
+                "expires_at": _refresh_expiry_iso(),
+                "revoked":    False,
+            }
+        ).execute()
+    )
 
     log_event("auth.refresh", user_id=user["id"], ip_address=ip)
 
@@ -223,10 +248,13 @@ async def refresh_tokens(payload: RefreshRequest, request: Request):
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, user: CurrentUser):
     # Revoke current access token jti in Valkey
-    revoke_token(user.jti, user.exp)
+    await run_in_threadpool(revoke_token, user.jti, user.exp)
 
     # Revoke all refresh tokens for this user
-    get_supabase().table("refresh_tokens").update({"revoked": True}).eq("user_id", user.sub).execute()
+    db = get_supabase()
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").update({"revoked": True}).eq("user_id", user.sub).execute()
+    )
 
     log_event(
         "auth.logout",
@@ -240,7 +268,14 @@ async def logout(request: Request, user: CurrentUser):
 
 @router.get("/me", response_model=UserPublic)
 async def me(user: CurrentUser):
-    row = get_supabase().table("users").select("id, email, name, role, created_at").eq("id", user.sub).single().execute()
+    db = get_supabase()
+    row = await run_in_threadpool(
+        lambda: db.table("users")
+        .select("id, email, name, role, created_at")
+        .eq("id", user.sub)
+        .single()
+        .execute()
+    )
     if not row.data:
         raise HTTPException(status_code=404, detail="User not found.")
     return UserPublic(**row.data)
@@ -253,15 +288,29 @@ async def change_password(payload: ChangePasswordRequest, request: Request, user
     db  = get_supabase()
     ip  = get_client_ip(request)
 
-    row = db.table("users").select("password_hash").eq("id", user.sub).single().execute()
-    if not row.data or not verify_password(payload.current_password, row.data["password_hash"]):
+    row = await run_in_threadpool(
+        lambda: db.table("users").select("password_hash").eq("id", user.sub).single().execute()
+    )
+
+    current_ok = False
+    if row.data:
+        current_ok = await run_in_threadpool(
+            verify_password, payload.current_password, row.data["password_hash"]
+        )
+
+    if not row.data or not current_ok:
         log_event("auth.change_password", user_id=user.sub, ip_address=ip, success=False)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect.")
 
-    db.table("users").update({"password_hash": hash_password(payload.new_password)}).eq("id", user.sub).execute()
+    new_hash = await run_in_threadpool(hash_password, payload.new_password)
+    await run_in_threadpool(
+        lambda: db.table("users").update({"password_hash": new_hash}).eq("id", user.sub).execute()
+    )
 
     # Revoke current access token + all refresh tokens — forces re-login
-    revoke_token(user.jti, user.exp)
-    db.table("refresh_tokens").update({"revoked": True}).eq("user_id", user.sub).execute()
+    await run_in_threadpool(revoke_token, user.jti, user.exp)
+    await run_in_threadpool(
+        lambda: db.table("refresh_tokens").update({"revoked": True}).eq("user_id", user.sub).execute()
+    )
 
     log_event("auth.change_password", user_id=user.sub, ip_address=ip)

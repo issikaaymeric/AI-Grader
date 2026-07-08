@@ -29,22 +29,14 @@ DEEPSEEK_MODEL    = "deepseek-chat"
 
 
 def _deepseek_once(system: str, user: str) -> tuple[str, str | None]:
-    """Returns (content, finish_reason)."""
     from openai import OpenAI
-
     if not settings.DEEPSEEK_API_KEY:
         raise RuntimeError("DEEPSEEK_API_KEY not set")
-
-    client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=20.0, max_retries=0)
     resp = client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
-        temperature=0.1,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        model=DEEPSEEK_MODEL, temperature=0.1, max_tokens=MAX_OUTPUT_TOKENS,
         response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
     )
     choice = resp.choices[0]
     return choice.message.content, choice.finish_reason
