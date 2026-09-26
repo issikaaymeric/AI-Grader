@@ -12,6 +12,13 @@ mapped to exactly one archetype via SUBJECT_RUBRIC_MAP. Instructors can
 still override per-assignment via POST /api/rubrics/ + rubric_id — this
 module only supplies the *default* when no rubric_id is given.
 
+The frontend's subject field is now free text (a searchable combobox that
+accepts custom entries), so `get_rubric_for_subject` no longer just falls
+straight to ESSAY_RUBRIC for anything unmapped: it first runs a lightweight
+keyword classifier (`_classify_by_keywords`) so an unlisted subject like
+"Kotlin for Android Dev" or "Linear Algebra II" still lands on a sane
+archetype instead of always defaulting to essay grading.
+
 To customize a single subject without touching its whole archetype, add
 a bespoke Rubric and point that subject's map entry at it directly.
 """
@@ -266,14 +273,85 @@ SUBJECT_RUBRIC_MAP: dict[str, Rubric] = {
 }
 
 
+# ── Keyword fallback for free-typed / unmapped subjects ──────────────────────
+#
+# Checked in this order (most-specific archetype first) so a subject that
+# could plausibly match two buckets resolves to the more specific one, e.g.
+# "Network Security" hits TECHNICAL via "network"/"security" before anything
+# else gets a chance to claim it.
+#
+# Each tuple is (archetype_rubric, keyword_tuple). Keywords are lowercase
+# substrings checked against the lowercased, trimmed subject string.
+
+_KEYWORD_ARCHETYPES: tuple[tuple[Rubric, tuple[str, ...]], ...] = (
+    (
+        TECHNICAL_RUBRIC,
+        (
+            "program", "coding", "code", "software", "computer science",
+            "database", "network", "python", "java", "javascript",
+            "front end", "front-end", "back end", "back-end", "full stack",
+            "full-stack", "mobile dev", "mobile app", "android", "ios dev",
+            "data science", "big data", "machine learning", "cryptograph",
+            "cybersecurity", "cyber security", "algorithm", "web dev",
+            "app development", "devops",
+        ),
+    ),
+    (
+        QUANTITATIVE_RUBRIC,
+        (
+            "math", "calculus", "algebra", "geometry", "trigonometry",
+            "discrete", "statistic", "probability", "econom", "differential",
+            "linear algebra", "quantitative",
+        ),
+    ),
+    (
+        BUSINESS_RUBRIC,
+        (
+            "business", "management", "marketing", "accounting", "finance",
+            "financial", "investing", "investment", "trade", "commerce",
+            "ecommerce", "e-commerce", "entrepreneurship", "operations",
+            "project management", "agile", "organizational behavior",
+            "organisational behaviour", "human resources", "hr management",
+            "supply chain", "strategy",
+        ),
+    ),
+)
+
+
+def _classify_by_keywords(subject: str) -> Rubric | None:
+    """
+    Best-effort archetype guess for a subject with no exact map entry
+    (typically a free-typed custom subject from the frontend combobox).
+
+    Returns None — signalling "no confident guess, use the essay default" —
+    if nothing matches. This is a heuristic, not a classifier with recall
+    guarantees: it exists to avoid grading "Kotlin for Android Dev" against
+    an essay rubric, not to replace an instructor-supplied rubric_id.
+    """
+    normalized = subject.lower()
+    for rubric, keywords in _KEYWORD_ARCHETYPES:
+        if any(keyword in normalized for keyword in keywords):
+            return rubric
+    return None
+
+
 def get_rubric_for_subject(subject: str | None) -> Rubric:
     """
     Look up the default rubric for a given subject name.
 
-    Falls back to ESSAY_RUBRIC (the original hardcoded default) for any
-    subject not in the map — including None/empty, free-typed subjects,
-    or subjects added to the frontend list before this map is updated.
+    Resolution order:
+      1. Exact match (case-sensitive, trimmed) in SUBJECT_RUBRIC_MAP.
+      2. Keyword-based archetype guess via _classify_by_keywords, for
+         free-typed subjects not in the map.
+      3. ESSAY_RUBRIC as the final fallback — including for None/empty
+         subjects or subjects that match no keyword at all.
     """
     if not subject:
         return ESSAY_RUBRIC
-    return SUBJECT_RUBRIC_MAP.get(subject.strip(), ESSAY_RUBRIC)
+
+    trimmed = subject.strip()
+    mapped = SUBJECT_RUBRIC_MAP.get(trimmed)
+    if mapped is not None:
+        return mapped
+
+    return _classify_by_keywords(trimmed) or ESSAY_RUBRIC
