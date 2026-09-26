@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
 import { useAssignmentStore } from '../store/assignmentStore';
@@ -56,6 +56,7 @@ const SUBJECTS = [
 ];
 
 const MAX_INSTRUCTIONS_CHARS = 5000 * 2;
+const MAX_SUBJECT_CHARS = 100;
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -79,10 +80,11 @@ export default function Dashboard() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file || !subject) return;
+    const trimmedSubject = subject.trim();
+    if (!file || !trimmedSubject) return;
     const result = await submitAssignment(
       file,
-      subject,
+      trimmedSubject,
       gradingSystem,
       null,                       // rubricId
       instructions.trim() || null // optional assignment brief
@@ -92,6 +94,7 @@ export default function Dashboard() {
 
   const isProcessing = uploading || status === 'pending' || status === 'processing';
   const instructionsOverLimit = instructions.length > MAX_INSTRUCTIONS_CHARS;
+  const trimmedSubject = subject.trim();
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -168,18 +171,15 @@ export default function Dashboard() {
           {/* Subject */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-            <select
+            <SubjectCombobox
+              subjects={SUBJECTS}
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900
-                         focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Select a subject…</option>
-              {SUBJECTS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+              onChange={setSubject}
+              maxLength={MAX_SUBJECT_CHARS}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Don't see your subject? Type it and pick "Use as custom subject" — it'll still be graded against a sensible default rubric.
+            </p>
           </div>
 
           {/* Grading System Toggle */}
@@ -217,7 +217,7 @@ export default function Dashboard() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={!file || !subject || isProcessing || instructionsOverLimit}
+            disabled={!file || !trimmedSubject || isProcessing || instructionsOverLimit}
             className="w-full py-3 px-6 rounded-xl bg-indigo-600 text-white font-semibold
                        hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
                        transition-colors flex items-center justify-center gap-2"
@@ -233,6 +233,157 @@ export default function Dashboard() {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ── Searchable subject combobox (list + free text) ──────────────────────────
+//
+// Controlled by `value`/`onChange` like a plain input. Renders a filtered
+// dropdown of `subjects`; if the current text doesn't exactly match an entry
+// (case-insensitive), an extra "Use '<text>' as custom subject" row lets the
+// user commit an arbitrary subject name. Selecting a row (click or Enter)
+// commits `value` and closes the dropdown; blurring outside the component
+// also closes it without discarding what was typed.
+function SubjectCombobox({ subjects, value, onChange, maxLength = 100 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const containerRef = useRef(null);
+  const listRef = useRef(null);
+
+  const query = value.trim();
+  const normalizedQuery = query.toLowerCase();
+
+  const filteredSubjects = useMemo(() => {
+    if (!normalizedQuery) return subjects;
+    return subjects.filter((s) => s.toLowerCase().includes(normalizedQuery));
+  }, [subjects, normalizedQuery]);
+
+  const hasExactMatch = subjects.some((s) => s.toLowerCase() === normalizedQuery);
+  const showCustomOption = query.length > 0 && !hasExactMatch;
+
+  // Combined, indexable list of rows: subjects first, then the custom-entry row.
+  const rows = showCustomOption
+    ? [...filteredSubjects, { custom: true, value: query }]
+    : filteredSubjects;
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [normalizedQuery, isOpen]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const commit = (val) => {
+    onChange(val);
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      setIsOpen(true);
+      return;
+    }
+    if (!isOpen) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex((i) => Math.min(i + 1, rows.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex((i) => Math.max(i - 1, 0));
+        break;
+      case 'Enter': {
+        e.preventDefault();
+        const row = rows[highlightedIndex];
+        if (row) commit(typeof row === 'string' ? row : row.value);
+        break;
+      }
+      case 'Escape':
+        setIsOpen(false);
+        break;
+      default:
+        break;
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-autocomplete="list"
+        value={value}
+        maxLength={maxLength}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Search or type a subject…"
+        required
+        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+
+      {isOpen && rows.length > 0 && (
+        <ul
+          ref={listRef}
+          role="listbox"
+          className="absolute z-10 mt-1 w-full max-h-64 overflow-auto rounded-lg
+                     border border-gray-200 bg-white shadow-lg py-1"
+        >
+          {rows.map((row, index) => {
+            const isCustom = typeof row !== 'string';
+            const label = isCustom ? row.value : row;
+            const isHighlighted = index === highlightedIndex;
+            return (
+              <li
+                key={isCustom ? `__custom__${label}` : label}
+                role="option"
+                aria-selected={isHighlighted}
+                onMouseDown={(e) => {
+                  // onMouseDown (not onClick) so this fires before the input's onBlur.
+                  e.preventDefault();
+                  commit(label);
+                }}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={`px-4 py-2 text-sm cursor-pointer flex items-center gap-2
+                  ${isHighlighted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'}`}
+              >
+                {isCustom ? (
+                  <>
+                    <PlusIcon className="text-indigo-500 shrink-0" />
+                    <span>
+                      Use <span className="font-medium">"{label}"</span> as custom subject
+                    </span>
+                  </>
+                ) : (
+                  label
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {isOpen && rows.length === 0 && (
+        <div className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200
+                        bg-white shadow-lg py-3 px-4 text-sm text-gray-400">
+          No matches — keep typing to add a custom subject.
+        </div>
+      )}
     </div>
   );
 }
@@ -253,6 +404,14 @@ function DocumentIcon({ className }) {
     <svg className={`w-10 h-10 mx-auto ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
         d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className }) {
+  return (
+    <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.5v15m7.5-7.5h-15" />
     </svg>
   );
 }
