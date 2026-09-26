@@ -31,10 +31,26 @@ async function safeJson(res) {
 // module-parse time in some bundlers. Moved to a lazy getter pattern:
 // wrap in a function so `useAuthStore` is only read at call-time, after
 // the store has been created.
+//
+// This is the single shared, auth-aware fetch client for the whole app —
+// every store that needs an authenticated request (assignments, profile,
+// etc.) should call this instead of hand-rolling its own token-attaching
+// wrapper. A second, independent implementation without the refresh-on-401
+// branch below is how "Invalid or expired token" ends up surfaced to the
+// user instead of being silently recovered from.
 export async function apiFetch(path, options = {}) {
   const store = useAuthStore.getState(); // safe — called after store is created
   const token = store.accessToken;
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+
+  // BUG FIX 9: FormData bodies (file uploads) must let the browser set its
+  // own `multipart/form-data; boundary=...` Content-Type. Forcing
+  // `application/json` here — as the previous unconditional default did —
+  // breaks multipart parsing server-side the moment a caller sends FormData.
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...options.headers,
+  };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(path, { ...options, headers });
