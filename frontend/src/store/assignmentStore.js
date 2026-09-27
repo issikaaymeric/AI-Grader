@@ -23,6 +23,7 @@ async function safeJson(res) {
 }
 
 const PAGE_SIZE = 10;
+const VALID_GRADING_SYSTEMS = new Set(['US', 'UK']);
 
 export const useAssignmentStore = create((set, get) => ({
   uploading: false,
@@ -111,13 +112,28 @@ export const useAssignmentStore = create((set, get) => ({
   // re-entering all the assignment metadata by hand.
   resubmitAssignment: (file) => {
     const { lastSubmission } = get();
+
     if (!lastSubmission) {
       return Promise.resolve({
         ok: false,
         error: 'No submission context available — original subject/grading system/rubric is unknown.',
       });
     }
+
     const { subject, gradingSystem, rubricId, instructions } = lastSubmission;
+
+    // Guard: fail fast client-side rather than round-tripping an
+    // invalid Literal["US","UK"] value to the backend and surfacing a
+    // raw 422. Catches the case where lastSubmission was populated from
+    // an assignment-detail response that doesn't carry a valid
+    // grading_system field.
+    if (!VALID_GRADING_SYSTEMS.has(gradingSystem)) {
+      return Promise.resolve({
+        ok: false,
+        error: `Cannot resubmit: grading system "${gradingSystem}" is not valid (expected US or UK). Try re-selecting it from the original assignment.`,
+      });
+    }
+
     return get().submitAssignment(file, subject, gradingSystem, rubricId, instructions);
   },
 
@@ -135,6 +151,8 @@ export const useAssignmentStore = create((set, get) => ({
         result: data.result ?? null,
         // Only overwrite fields the detail endpoint actually returned, so a
         // partial payload doesn't stomp on metadata we already have.
+        // TODO(unconfirmed): field names/casing below are a guess pending
+        // the real GET /api/assignments/{id} response shape.
         lastSubmission: {
           subject: data.subject ?? s.lastSubmission?.subject,
           gradingSystem: data.grading_system ?? s.lastSubmission?.gradingSystem,
