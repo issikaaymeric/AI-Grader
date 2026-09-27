@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAssignmentStore } from '../store/assignmentStore';
 
@@ -30,27 +30,83 @@ function scoreColor(score) {
   return COLOR_CLASSES.red;
 }
 
+// ── Export helpers ────────────────────────────────────────────────────────
+
+function downloadJSON(result, filename) {
+  try {
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('JSON export failed:', err);
+  }
+}
+
 export default function ResultsPage() {
   const navigate = useNavigate();
-  const { result, status, uploadError, reset } = useAssignmentStore();
+  const {
+    result, status, uploadError, uploading, lastSubmission,
+    reset, resubmitAssignment,
+  } = useAssignmentStore();
+  const cotDetailsRef = useRef(null);
+  const resubmitInputRef = useRef(null);
 
+  // BUG FIX (premature redirect on resubmit): submitAssignment clears
+  // `status` and `result` to null the instant it's called, before the
+  // network request resolves. This effect used to check only
+  // `!status && !result`, so triggering a resubmit from this page bounced
+  // the user straight back to `/` before grading even started. `uploading`
+  // now covers that transient window.
   useEffect(() => {
-    if (!status && !result) navigate('/');
-  }, [status, result, navigate]);
+    if (!status && !result && !uploading) navigate('/');
+  }, [status, result, uploading, navigate]);
 
   const handleReset = () => {
     reset();
     navigate('/');
   };
 
+  const handleDownloadPDF = () => {
+    // Force the collapsible chain-of-thought open so it's captured in the printout.
+    if (cotDetailsRef.current) cotDetailsRef.current.open = true;
+    window.print();
+  };
+
+  const handleDownloadJSON = () => {
+    const filename = `grading-result-${result?.letter_grade ?? 'result'}-${Date.now()}.json`;
+    downloadJSON(result, filename);
+  };
+
+  const handleResubmitClick = () => {
+    resubmitInputRef.current?.click();
+  };
+
+  const handleResubmitFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    // Reset the input so re-selecting the same file still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+    await resubmitAssignment(file);
+  };
+
   // ── Loading state ────────────────────────────────────────────────────────
-  if (status === 'pending' || status === 'processing') {
+  // Includes `uploading` so the resubmit request shows feedback immediately,
+  // before the backend has even returned a new assignment_id / status.
+  if (uploading || status === 'pending' || status === 'processing') {
     return (
       <FullPageCenter>
         <div className="text-center space-y-4">
           <PulsingBrain />
           <h2 className="text-xl font-semibold text-gray-800">
-            {status === 'pending' ? 'Queued for grading…' : 'Analysing your submission…'}
+            {uploading ? 'Uploading resubmission…'
+              : status === 'pending' ? 'Queued for grading…'
+              : 'Analysing your submission…'}
           </h2>
           <p className="text-gray-500 text-sm">This usually takes 15–45 seconds.</p>
           <ProgressBar />
@@ -86,21 +142,53 @@ export default function ResultsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; }
+          .print-container { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
+        }
+      `}</style>
+
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* ── Top Bar ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between no-print">
           <h1 className="text-2xl font-bold text-gray-900">Grading Results</h1>
-          <button onClick={handleReset}
-            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-            ← Grade Another
-          </button>
+          <div className="flex items-center gap-4">
+            {lastSubmission && (
+              <>
+                <input
+                  ref={resubmitInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleResubmitFileChange}
+                />
+                <button onClick={handleResubmitClick}
+                  className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+                  🔁 Resubmit
+                </button>
+              </>
+            )}
+            <button onClick={handleDownloadJSON}
+              className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+              ⬇ JSON
+            </button>
+            <button onClick={handleDownloadPDF}
+              className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+              ⬇ PDF
+            </button>
+            <button onClick={handleReset}
+              className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              ← Grade Another
+            </button>
+          </div>
         </div>
 
         {/* ── Human Review Banner ────────────────────────────────────────── */}
         {flag_for_review && (
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-300
-                          rounded-xl px-5 py-4 text-amber-800 text-sm">
+                          rounded-xl px-5 py-4 text-amber-800 text-sm print-container">
             <span className="text-xl">🔍</span>
             <div>
               <p className="font-semibold">Borderline Grade — Human Review Recommended</p>
@@ -113,7 +201,7 @@ export default function ResultsPage() {
         )}
 
         {/* ── Grade Card + Summary ───────────────────────────────────────── */}
-        <div className={`rounded-2xl border-2 ${colors.border} ${colors.bg} p-8`}>
+        <div className={`rounded-2xl border-2 ${colors.border} ${colors.bg} p-8 print-container`}>
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className={`text-7xl font-black ${colors.text} leading-none shrink-0`}>
               {letter_grade}
@@ -137,7 +225,7 @@ export default function ResultsPage() {
         {/* ── Instructions Alignment (only if instructions were given) ─────── */}
         {instructions_alignment && (
           <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200
-                          rounded-xl px-5 py-4 text-sm">
+                          rounded-xl px-5 py-4 text-sm print-container">
             <span className="text-lg shrink-0">📋</span>
             <div>
               <p className="font-semibold text-indigo-900 mb-0.5">Assignment Brief Alignment</p>
@@ -209,7 +297,7 @@ export default function ResultsPage() {
 
         {/* ── Chain of Thought (collapsible) ─────────────────────────────── */}
         {chain_of_thought?.length > 0 && (
-          <details className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <details ref={cotDetailsRef} className="bg-white rounded-xl border border-gray-200 shadow-sm print-container">
             <summary className="px-6 py-4 font-semibold text-gray-700 cursor-pointer
                                 hover:bg-gray-50 rounded-xl">
               🔗 AI Chain of Thought (Transparency Log)
@@ -231,7 +319,7 @@ export default function ResultsPage() {
 
 function Section({ title, children, noPadding = false }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden print-container">
       <h2 className="text-lg font-semibold text-gray-800 px-6 pt-6 pb-3">{title}</h2>
       <div className={noPadding ? '' : 'px-6 pb-6'}>{children}</div>
     </div>
