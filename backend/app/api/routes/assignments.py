@@ -261,23 +261,15 @@ async def list_assignments(
     ]
     return AssignmentListResponse(items=items, total=total, limit=limit, offset=offset)
 
-
 @router.get("/{assignment_id}", response_model=AssignmentStatusResponse)
 async def get_assignment(assignment_id: str, user: CurrentUser):
-    cached = cache_get(f"result:{assignment_id}")
-    if cached:
-        if user.role.value == "student":
-            row = get_supabase().table("assignments").select("user_id").eq(
-                "id", assignment_id
-            ).single().execute()
-            if row.data and row.data["user_id"] != user.sub:
-                raise HTTPException(status_code=403, detail="Access denied.")
-        return AssignmentStatusResponse(id=assignment_id, status="done", result=cached)
-
     row = (
         get_supabase()
         .table("assignments")
-        .select("id, user_id, status, grade, score, feedback_json, flagged_for_review")
+        .select(
+            "id, user_id, status, grade, score, feedback_json, "
+            "flagged_for_review, subject, grading_system, instructions"
+        )
         .eq("id", assignment_id)
         .single()
         .execute()
@@ -290,15 +282,25 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
     if user.role.value == "student" and data["user_id"] != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    result = None
-    if data["status"] == "done" and data.get("feedback_json"):
+    cached = cache_get(f"result:{assignment_id}")
+    if cached:
+        result = cached
+        effective_status = "done"
+    elif data["status"] == "done" and data.get("feedback_json"):
         raw = data["feedback_json"]
         result = json.loads(raw) if isinstance(raw, str) else raw
+        effective_status = data["status"]
+    else:
+        result = None
+        effective_status = data["status"]
 
     return AssignmentStatusResponse(
         id=assignment_id,
-        status=data["status"],
+        status=effective_status,
         result=result,
+        subject=data.get("subject"),
+        grading_system=data.get("grading_system"),
+        instructions=data.get("instructions"),
     )
 
 
