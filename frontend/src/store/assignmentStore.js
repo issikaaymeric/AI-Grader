@@ -31,6 +31,12 @@ export const useAssignmentStore = create((set, get) => ({
   status: null,
   result: null,
 
+  // Metadata from the most recent submission (or loaded assignment), kept
+  // around so a page like ResultsPage can resubmit a revised file against
+  // the same subject/grading system/rubric/instructions without the caller
+  // having to pass any of that back in.
+  lastSubmission: null,
+
   history: [],
   historyTotal: 0,
   historyLoading: false,
@@ -66,7 +72,13 @@ export const useAssignmentStore = create((set, get) => ({
   },
 
   submitAssignment: async (file, subject, gradingSystem, rubricId, instructions) => {
-    set({ uploading: true, uploadError: null, result: null, status: null });
+    set({
+      uploading: true,
+      uploadError: null,
+      result: null,
+      status: null,
+      lastSubmission: { subject, gradingSystem, rubricId, instructions },
+    });
 
     const form = new FormData();
     form.append('file', file);
@@ -93,6 +105,22 @@ export const useAssignmentStore = create((set, get) => ({
     }
   },
 
+  // Resubmits a (typically revised) file against the subject/grading
+  // system/rubric/instructions of the last submission or loaded assignment.
+  // Used by ResultsPage so a user can re-grade without navigating away and
+  // re-entering all the assignment metadata by hand.
+  resubmitAssignment: (file) => {
+    const { lastSubmission } = get();
+    if (!lastSubmission) {
+      return Promise.resolve({
+        ok: false,
+        error: 'No submission context available — original subject/grading system/rubric is unknown.',
+      });
+    }
+    const { subject, gradingSystem, rubricId, instructions } = lastSubmission;
+    return get().submitAssignment(file, subject, gradingSystem, rubricId, instructions);
+  },
+
   loadAssignment: async (assignmentId) => {
     set({ uploading: false, uploadError: null, result: null, status: 'processing' });
     try {
@@ -101,11 +129,19 @@ export const useAssignmentStore = create((set, get) => ({
 
       if (!res.ok) throw new Error(parseDetail(data.detail));
 
-      set({
+      set((s) => ({
         currentAssignmentId: assignmentId,
         status: data.status,
         result: data.result ?? null,
-      });
+        // Only overwrite fields the detail endpoint actually returned, so a
+        // partial payload doesn't stomp on metadata we already have.
+        lastSubmission: {
+          subject: data.subject ?? s.lastSubmission?.subject,
+          gradingSystem: data.grading_system ?? s.lastSubmission?.gradingSystem,
+          rubricId: data.rubric_id ?? s.lastSubmission?.rubricId,
+          instructions: data.instructions ?? s.lastSubmission?.instructions,
+        },
+      }));
 
       if (data.status === 'pending' || data.status === 'processing') {
         get()._startPolling(assignmentId);
