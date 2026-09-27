@@ -92,13 +92,7 @@ export default function ResultsPage() {
     // Reset the input so re-selecting the same file still fires onChange.
     e.target.value = '';
     if (!file) return;
-    await resubmitAssignment(file);
-  };
 
-  const handleResubmitFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
     const { ok, error } = await resubmitAssignment(file);
     if (!ok) {
       useAssignmentStore.setState({ uploadError: error });
