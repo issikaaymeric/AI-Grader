@@ -123,6 +123,7 @@ class AssignmentStatusResponse(BaseModel):
     subject: str | None = None
     grading_system: str | None = None
     instructions: str | None = None
+    rubric_id: str | None = None
 
 
 class RubricCreateRequest(BaseModel):
