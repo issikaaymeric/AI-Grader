@@ -118,8 +118,11 @@ class AssignmentSubmitRequest(BaseModel):
 
 class AssignmentStatusResponse(BaseModel):
     id: str
-    status: str                               # pending | processing | done | error
-    result: GradingResult | None = None
+    status: str
+    result: dict | None = None
+    subject: str | None = None
+    grading_system: str | None = None
+    instructions: str | None = None
 
 
 class RubricCreateRequest(BaseModel):
