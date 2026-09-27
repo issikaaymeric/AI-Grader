@@ -95,6 +95,16 @@ export default function ResultsPage() {
     await resubmitAssignment(file);
   };
 
+  const handleResubmitFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const { ok, error } = await resubmitAssignment(file);
+    if (!ok) {
+      useAssignmentStore.setState({ uploadError: error });
+    }
+  };
+
   // ── Loading state ────────────────────────────────────────────────────────
   // Includes `uploading` so the resubmit request shows feedback immediately,
   // before the backend has even returned a new assignment_id / status.
