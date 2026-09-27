@@ -122,11 +122,8 @@ export const useAssignmentStore = create((set, get) => ({
 
     const { subject, gradingSystem, rubricId, instructions } = lastSubmission;
 
-    // Guard: fail fast client-side rather than round-tripping an
-    // invalid Literal["US","UK"] value to the backend and surfacing a
-    // raw 422. Catches the case where lastSubmission was populated from
-    // an assignment-detail response that doesn't carry a valid
-    // grading_system field.
+    // Guard: fail fast client-side rather than round-tripping an invalid
+    // Literal["US","UK"] value to the backend and surfacing a raw 422.
     if (!VALID_GRADING_SYSTEMS.has(gradingSystem)) {
       return Promise.resolve({
         ok: false,
@@ -149,10 +146,6 @@ export const useAssignmentStore = create((set, get) => ({
         currentAssignmentId: assignmentId,
         status: data.status,
         result: data.result ?? null,
-        // Only overwrite fields the detail endpoint actually returned, so a
-        // partial payload doesn't stomp on metadata we already have.
-        // TODO(unconfirmed): field names/casing below are a guess pending
-        // the real GET /api/assignments/{id} response shape.
         lastSubmission: {
           subject: data.subject ?? s.lastSubmission?.subject,
           gradingSystem: data.grading_system ?? s.lastSubmission?.gradingSystem,
