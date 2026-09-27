@@ -199,6 +199,7 @@ async def submit_assignment(
         "subject":        subject,
         "grading_system": grading_system.value,
         "instructions":   instructions,
+        "rubric_id":      rubric_id,
         "file_url":       file_url,
         "status":         "pending",
     }).execute()
@@ -261,6 +262,7 @@ async def list_assignments(
     ]
     return AssignmentListResponse(items=items, total=total, limit=limit, offset=offset)
 
+
 @router.get("/{assignment_id}", response_model=AssignmentStatusResponse)
 async def get_assignment(assignment_id: str, user: CurrentUser):
     row = (
@@ -268,7 +270,7 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
         .table("assignments")
         .select(
             "id, user_id, status, grade, score, feedback_json, "
-            "flagged_for_review, subject, grading_system, instructions"
+            "flagged_for_review, subject, grading_system, instructions, rubric_id"
         )
         .eq("id", assignment_id)
         .single()
@@ -301,6 +303,7 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
         subject=data.get("subject"),
         grading_system=data.get("grading_system"),
         instructions=data.get("instructions"),
+        rubric_id=data.get("rubric_id"),
     )
 
 
