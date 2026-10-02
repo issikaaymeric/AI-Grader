@@ -93,14 +93,14 @@ export const useAssignmentStore = create((set, get) => ({
     }
   },
 
-  submitAssignment: async (file, subject, gradingSystem, rubricId, instructions) => {
+  submitAssignment: async (file, subject, gradingSystem, rubricId, instructions, instructionsFile = null) => {
     stopPolling();
     set({
       uploading: true,
       uploadError: null,
       result: null,
       status: null,
-      lastSubmission: { subject, gradingSystem, rubricId, instructions },
+      lastSubmission: { subject, gradingSystem, rubricId, instructions, instructionsFile },
     });
 
     const form = new FormData();
@@ -109,6 +109,7 @@ export const useAssignmentStore = create((set, get) => ({
     form.append('grading_system', gradingSystem);
     if (rubricId) form.append('rubric_id', rubricId);
     if (instructions) form.append('instructions', instructions);
+    if (instructionsFile) form.append('instructions_file', instructionsFile);
 
     try {
       // apiFetch skips the default JSON Content-Type for FormData bodies,
