@@ -9,12 +9,15 @@ the upload response.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
 from app.core.cache import cache_get
 from app.core.dependencies import CurrentUser, get_client_ip
@@ -23,14 +26,16 @@ from app.schemas.grading import AssignmentStatusResponse, GradingSystem
 from app.services.auth.audit import log_event
 from app.services.ingestion.extractor import (
     ExtractionResult,
+    anonymise,
     append_image_descriptions,
     describe_images,
     extract,
 )
-from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
+STORAGE_BUCKET = "assignments"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_INSTRUCTIONS_CHARS = 2000 * 5  # 10k chars, ~4k words, ~20-25 pages of text
 
@@ -55,6 +60,43 @@ class AssignmentListResponse(BaseModel):
     offset: int
 
 
+# ── Storage ───────────────────────────────────────────────────────────────────
+
+def _upload_original(assignment_id: str, content: bytes, filename: str, content_type: str | None) -> str | None:
+    """
+    Store the original upload under an ASCII-safe key and return its public URL.
+    Never raises: grading does not depend on the stored file, but the marked-up
+    document view does, so failures are logged with a full traceback.
+    """
+    ext = os.path.splitext(filename or "")[1].lower()
+    path = f"assignments/{assignment_id}/original{ext}"
+    try:
+        bucket = get_supabase().storage.from_(STORAGE_BUCKET)
+        bucket.upload(
+            path,
+            content,
+            {
+                "content-type": content_type or "application/octet-stream",
+                "upsert": "true",
+            },
+        )
+        return bucket.get_public_url(path)
+    except Exception:
+        logger.exception("Original file upload failed for assignment %s (path=%s)", assignment_id, path)
+        return None
+
+
+def _remove_original(assignment_id: str) -> None:
+    try:
+        bucket = get_supabase().storage.from_(STORAGE_BUCKET)
+        folder = f"assignments/{assignment_id}"
+        names = [f["name"] for f in (bucket.list(folder) or []) if f.get("name")]
+        if names:
+            bucket.remove([f"{folder}/{n}" for n in names])
+    except Exception:
+        logger.exception("Storage cleanup failed for assignment %s", assignment_id)
+
+
 # ── Grading dispatch ──────────────────────────────────────────────────────────
 
 def _describe_and_finalize_text(extraction: ExtractionResult) -> str:
@@ -63,10 +105,7 @@ def _describe_and_finalize_text(extraction: ExtractionResult) -> str:
             describe_images(extraction.images)
             append_image_descriptions(extraction)
         except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "Image description failed; continuing with text-only grading."
-            )
+            logger.exception("Image description failed; continuing with text-only grading.")
     return extraction.text
 
 
@@ -83,8 +122,6 @@ def _grade_in_thread(
         from app.services.scoring.subject_rubrics import get_rubric_for_subject
         from app.services.scoring.evaluator import evaluate
         from app.core.cache import cache_set
-        import logging
-        logger = logging.getLogger(__name__)
 
         db = get_supabase()
         try:
@@ -107,7 +144,7 @@ def _grade_in_thread(
             db.table("assignments").update({
                 "status": "done",
                 "grade": result.letter_grade,
-                "score": result.raw_score,   # was result.score — field is raw_score
+                "score": result.raw_score,
                 "feedback_json": result.model_dump_json(),
                 "swot_analysis": result.swot.model_dump_json(),
                 "flagged_for_review": result.flag_for_review,
@@ -170,7 +207,6 @@ async def submit_assignment(
 
     try:
         extraction = extract(content, file.filename or "upload.txt")
-        from app.services.ingestion.extractor import anonymise
         extraction.text = anonymise(extraction.text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -178,20 +214,16 @@ async def submit_assignment(
     assignment_id = str(uuid.uuid4())
     db = get_supabase()
 
-    file_url = None
-    try:
-        path = f"assignments/{assignment_id}/{file.filename}"
-        db.storage.from_("assignments").upload(path, content)
-        file_url = db.storage.from_("assignments").get_public_url(path)
-    except Exception:
-        pass
+    file_url = await run_in_threadpool(
+        _upload_original, assignment_id, content, file.filename or "", file.content_type
+    )
 
     rubric_dict: dict | None = None
     if rubric_id:
-        row = db.table("rubrics").select("*").eq("id", rubric_id).single().execute()
+        row = db.table("rubrics").select("*").eq("id", rubric_id).limit(1).execute()
         if not row.data:
             raise HTTPException(status_code=404, detail="Rubric not found.")
-        rubric_dict = row.data.get("criteria")
+        rubric_dict = row.data[0].get("criteria")
 
     db.table("assignments").insert({
         "id":             assignment_id,
@@ -214,6 +246,7 @@ async def submit_assignment(
             "system": grading_system.value,
             "has_instructions": bool(instructions),
             "image_count": len(extraction.images),
+            "original_stored": file_url is not None,
         },
     )
 
@@ -265,7 +298,7 @@ async def list_assignments(
 
 @router.get("/{assignment_id}", response_model=AssignmentStatusResponse)
 async def get_assignment(assignment_id: str, user: CurrentUser):
-    row = (
+    res = (
         get_supabase()
         .table("assignments")
         .select(
@@ -273,16 +306,16 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
             "flagged_for_review, subject, grading_system, instructions, rubric_id"
         )
         .eq("id", assignment_id)
-        .single()
+        .limit(1)
         .execute()
     )
 
-    if not row.data:
+    if not res.data:
         raise HTTPException(status_code=404, detail="Assignment not found.")
 
-    data = row.data
-    if user.role.value == "student" and data["user_id"] != user.sub:
-        raise HTTPException(status_code=403, detail="Access denied.")
+    data = res.data[0]
+    if user.role.value != "admin" and data["user_id"] != user.sub:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
 
     cached = cache_get(f"result:{assignment_id}")
     if cached:
@@ -311,19 +344,15 @@ async def get_assignment(assignment_id: str, user: CurrentUser):
 async def delete_assignment(assignment_id: str, user: CurrentUser):
     db = get_supabase()
 
-    row = db.table("assignments").select("user_id").eq("id", assignment_id).single().execute()
+    res = db.table("assignments").select("user_id").eq("id", assignment_id).limit(1).execute()
 
-    if not row.data:
+    if not res.data:
         raise HTTPException(status_code=404, detail="Assignment not found.")
 
-    if user.role.value == "student" and row.data["user_id"] != user.sub:
-        raise HTTPException(status_code=403, detail="Access denied.")
+    if user.role.value != "admin" and res.data[0]["user_id"] != user.sub:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
 
     db.table("assignments").delete().eq("id", assignment_id).execute()
-
-    try:
-        db.storage.from_("assignments").remove([f"assignments/{assignment_id}"])
-    except Exception:
-        pass
+    await run_in_threadpool(_remove_original, assignment_id)
 
     return None
