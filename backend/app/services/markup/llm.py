@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.services.llm_client import call_llm
+from app.services.scoring.llm_client import call_llm
 
 _ROLE_LABELS = {"user": "Student", "assistant": "Assistant"}
 
