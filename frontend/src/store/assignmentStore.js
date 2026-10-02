@@ -23,25 +23,49 @@ async function safeJson(res) {
 }
 
 const PAGE_SIZE = 10;
+const POLL_INTERVAL = 3000;
+const MAX_POLLS = 120;
 const VALID_GRADING_SYSTEMS = new Set(['US', 'UK']);
 
-export const useAssignmentStore = create((set, get) => ({
+// Module-level handle so reset() and a new submission can cancel an in-flight
+// poll. Previously the interval lived only in _startPolling's closure and
+// could never be stopped from outside.
+let pollInterval = null;
+
+function stopPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = null;
+}
+
+const INITIAL_SESSION_STATE = {
   uploading: false,
   uploadError: null,
   currentAssignmentId: null,
   status: null,
   result: null,
-
-  // Metadata from the most recent submission (or loaded assignment), kept
-  // around so a page like ResultsPage can resubmit a revised file against
-  // the same subject/grading system/rubric/instructions without the caller
-  // having to pass any of that back in.
   lastSubmission: null,
+};
+
+export const useAssignmentStore = create((set, get) => ({
+  ...INITIAL_SESSION_STATE,
+
+  // Note: lastSubmission holds the metadata from the most recent submission
+  // (or loaded assignment), kept so ResultsPage can resubmit a revised file
+  // against the same subject/grading system/rubric/instructions.
 
   history: [],
   historyTotal: 0,
   historyLoading: false,
   historyError: null,
+
+  // BUG FIX ("Grade Another" / "Try Again" did nothing): ResultsPage calls
+  // reset(), but the store never defined it, so the click threw
+  // "reset is not a function" before navigate('/') ran. Also cancels any
+  // in-flight poll so a stale response can't repopulate the cleared state.
+  reset: () => {
+    stopPolling();
+    set({ ...INITIAL_SESSION_STATE });
+  },
 
   fetchHistory: async ({ limit = 20, offset = 0, statusFilter = null } = {}) => {
     set({ historyLoading: true, historyError: null });
@@ -49,12 +73,9 @@ export const useAssignmentStore = create((set, get) => ({
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (statusFilter) params.set('status_filter', statusFilter);
 
-      // BUG FIX (auth desync): was calling a locally-defined `authFetch`
-      // that attached the access token but never refreshed it on a 401 —
-      // unlike `apiFetch` in authStore.js, which does. Every assignment
-      // call now goes through the same shared, refresh-aware client so an
-      // expired access token is silently renewed instead of surfacing
-      // "Invalid or expired token." to the user.
+      // BUG FIX (auth desync): every assignment call goes through the shared,
+      // refresh-aware apiFetch so an expired access token is silently renewed
+      // instead of surfacing "Invalid or expired token." to the user.
       const res = await apiFetch(`/api/assignments/?${params.toString()}`);
       const data = await safeJson(res);
 
@@ -73,6 +94,7 @@ export const useAssignmentStore = create((set, get) => ({
   },
 
   submitAssignment: async (file, subject, gradingSystem, rubricId, instructions) => {
+    stopPolling();
     set({
       uploading: true,
       uploadError: null,
@@ -102,14 +124,12 @@ export const useAssignmentStore = create((set, get) => ({
       return { ok: true };
     } catch (err) {
       set({ uploading: false, uploadError: err.message });
-      return { ok: false };
+      return { ok: false, error: err.message };
     }
   },
 
   // Resubmits a (typically revised) file against the subject/grading
   // system/rubric/instructions of the last submission or loaded assignment.
-  // Used by ResultsPage so a user can re-grade without navigating away and
-  // re-entering all the assignment metadata by hand.
   resubmitAssignment: (file) => {
     const { lastSubmission } = get();
 
@@ -135,6 +155,7 @@ export const useAssignmentStore = create((set, get) => ({
   },
 
   loadAssignment: async (assignmentId) => {
+    stopPolling();
     set({ uploading: false, uploadError: null, result: null, status: 'processing' });
     try {
       const res = await apiFetch(`/api/assignments/${assignmentId}`);
@@ -186,59 +207,60 @@ export const useAssignmentStore = create((set, get) => ({
   },
 
   _startPolling: (assignmentId) => {
-    const POLL_INTERVAL = 3000;
-    const MAX_POLLS = 120;
+    stopPolling();
     let count = 0;
 
     const interval = setInterval(async () => {
+      // Stale poll: the user reset, resubmitted, or opened another assignment.
+      if (get().currentAssignmentId !== assignmentId) {
+        if (pollInterval === interval) stopPolling();
+        else clearInterval(interval);
+        return;
+      }
+
       count++;
       if (count > MAX_POLLS) {
-        clearInterval(interval);
+        stopPolling();
         set({ status: 'error', uploadError: 'Grading timed out. Please retry.' });
         return;
       }
 
       try {
-        // BUG FIX (undefined BASE_URL): this referenced an undefined
-        // `BASE_URL` global, throwing a ReferenceError on every tick. That
-        // threw *inside* this try block, so it was swallowed by the catch
-        // below ("transient — keep polling") and the interval ran forever
-        // without ever reaching the backend. Every other call in this file
-        // uses a relative path — matched that here.
+        // Relative path via apiFetch, like every other call in this file.
         const res = await apiFetch(`/api/assignments/${assignmentId}`);
         if (!res.ok) return;
 
         const data = await safeJson(res);
+        if (get().currentAssignmentId !== assignmentId) return;
         set({ status: data.status });
 
         if (data.status === 'done') {
-          clearInterval(interval);
+          stopPolling();
 
           // Translate if user locale is not English
           const lang = localStorage.getItem('ai-grader-lang') ||
                         navigator.language?.split('-')[0] || 'en';
 
+          let finalResult = data.result;
           if (lang !== 'en' && data.result) {
-            const translated = await get()._translateResult(data.result, lang);
-            set({ result: translated ?? data.result });
-          } else {
-            set({ result: data.result });
+            finalResult = (await get()._translateResult(data.result, lang)) ?? data.result;
           }
+          // Translation is async; the user may have reset in the meantime.
+          if (get().currentAssignmentId === assignmentId) set({ result: finalResult });
         } else if (data.status === 'error') {
+          stopPolling();
           set({ uploadError: 'Grading failed. Please retry.' });
-          clearInterval(interval);
         }
       } catch {
         // transient — keep polling
       }
     }, POLL_INTERVAL);
+
+    pollInterval = interval;
   },
 
   _translateResult: async (result, targetLang) => {
     try {
-      // Same BASE_URL fix as _startPolling above; Content-Type header
-      // dropped since apiFetch already sets it by default for non-FormData
-      // bodies.
       const res = await apiFetch('/api/translate/grading-result', {
         method: 'POST',
         body: JSON.stringify({ content: result, target_lang: targetLang }),
