@@ -51,7 +51,8 @@ export const useAssignmentStore = create((set, get) => ({
 
   // Note: lastSubmission holds the metadata from the most recent submission
   // (or loaded assignment), kept so ResultsPage can resubmit a revised file
-  // against the same subject/grading system/rubric/instructions.
+  // against the same subject/grading system/rubric/instructions (and the
+  // attached brief file, when this session uploaded one).
 
   history: [],
   historyTotal: 0,
@@ -141,7 +142,7 @@ export const useAssignmentStore = create((set, get) => ({
       });
     }
 
-    const { subject, gradingSystem, rubricId, instructions } = lastSubmission;
+    const { subject, gradingSystem, rubricId, instructions, instructionsFile } = lastSubmission;
 
     // Guard: fail fast client-side rather than round-tripping an invalid
     // Literal["US","UK"] value to the backend and surfacing a raw 422.
@@ -152,7 +153,9 @@ export const useAssignmentStore = create((set, get) => ({
       });
     }
 
-    return get().submitAssignment(file, subject, gradingSystem, rubricId, instructions);
+    return get().submitAssignment(
+      file, subject, gradingSystem, rubricId, instructions, instructionsFile ?? null
+    );
   },
 
   loadAssignment: async (assignmentId) => {
@@ -173,6 +176,9 @@ export const useAssignmentStore = create((set, get) => ({
           gradingSystem: data.grading_system ?? s.lastSubmission?.gradingSystem,
           rubricId: data.rubric_id ?? s.lastSubmission?.rubricId,
           instructions: data.instructions ?? s.lastSubmission?.instructions,
+          // The server already merged any brief file into `instructions`;
+          // re-attaching it on resubmit would duplicate the text.
+          instructionsFile: null,
         },
       }));
 
