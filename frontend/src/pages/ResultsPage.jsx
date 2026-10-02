@@ -178,6 +178,12 @@ export default function ResultsPage() {
               className="text-sm text-gray-600 hover:text-gray-900 font-medium">
               ⬇ JSON
             </button>
+            {currentAssignmentId && (
+                <button onClick={() => navigate(`/markup/${currentAssignmentId}`)}
+                  className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+                  📝 Marked-up doc
+                </button>
+              )}
             <button onClick={handleDownloadPDF}
               className="text-sm text-gray-600 hover:text-gray-900 font-medium">
               ⬇ PDF
