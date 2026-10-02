@@ -76,11 +76,9 @@ def _request_edits(subject: str, instructions: str | None, chunk: list[dict]) ->
     user = "Paragraphs:\n" + json.dumps(
         [{"index": p["index"], "text": p["original"]} for p in chunk], ensure_ascii=False
     )
-    raw = llm.complete(
+    raw = llm.complete_json(
         _system_prompt(subject, instructions),
         [{"role": "user", "content": user}],
-        max_tokens=3000,
-        temperature=0.1,
     )
     return _parse_edits(raw)
 
