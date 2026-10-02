@@ -38,6 +38,7 @@ router = APIRouter(prefix="/assignments", tags=["assignments"])
 STORAGE_BUCKET = "assignments"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_INSTRUCTIONS_CHARS = 2000 * 5  # 10k chars, ~4k words, ~20-25 pages of text
+MAX_INSTRUCTIONS_FILE_BYTES = 5 * 1024 * 1024
 
 
 class AssignmentSummary(BaseModel):
@@ -178,6 +179,10 @@ def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, i
             assignment_id, extraction, subject, grading_system, rubric_dict, instructions
         )
 
+def _extract_brief(content: bytes, filename: str) -> str:
+    """Text of an uploaded assignment brief. Images are ignored. Blocking."""
+    return (extract(content, filename).text or "").strip()
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -190,6 +195,7 @@ async def submit_assignment(
     grading_system: Annotated[GradingSystem, Form()],
     instructions: Annotated[str | None, Form()] = None,
     rubric_id: Annotated[str | None, Form()] = None,
+    instructions_file: Annotated[UploadFile | None, File()] = None,
 ):
     content = await file.read()
 
@@ -199,12 +205,50 @@ async def submit_assignment(
             detail=f"File exceeds {MAX_FILE_BYTES // (1024 * 1024)} MB limit.",
         )
 
+    # ── Assignment brief: typed text and/or an attached file, merged ─────────
+    brief_text = ""
+    brief_name = ""
+    if instructions_file is not None and instructions_file.filename:
+        brief_bytes = await instructions_file.read()
+        if len(brief_bytes) > MAX_INSTRUCTIONS_FILE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Instructions file exceeds {MAX_INSTRUCTIONS_FILE_BYTES // (1024 * 1024)} MB limit.",
+            )
+        brief_name = os.path.basename(instructions_file.filename)
+        try:
+            brief_text = await run_in_threadpool(_extract_brief, brief_bytes, brief_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Instructions file: {exc}") from exc
+        except Exception as exc:
+            logger.exception("Could not read instructions file %s", brief_name)
+            raise HTTPException(
+                status_code=400, detail="Instructions file could not be read."
+            ) from exc
+        if not brief_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Instructions file contains no readable text (scanned PDFs are not supported).",
+            )
+
+    parts: list[str] = []
+    typed = (instructions or "").strip()
+    if typed:
+        parts.append(typed)
+    if brief_text:
+        parts.append(f"[Attached brief: {brief_name}]\n{brief_text}")
+    instructions = "\n\n".join(parts) or None
+
     if instructions and len(instructions) > MAX_INSTRUCTIONS_CHARS:
         raise HTTPException(
             status_code=400,
-            detail=f"Instructions exceed {MAX_INSTRUCTIONS_CHARS} characters.",
+            detail=(
+                f"Instructions exceed {MAX_INSTRUCTIONS_CHARS} characters "
+                f"(typed text and attached file combined)."
+            ),
         )
 
+    # ── Submission ───────────────────────────────────────────────────────────
     try:
         extraction = extract(content, file.filename or "upload.txt")
         extraction.text = anonymise(extraction.text)
@@ -245,6 +289,7 @@ async def submit_assignment(
             "subject": subject,
             "system": grading_system.value,
             "has_instructions": bool(instructions),
+            "has_instructions_file": bool(brief_text),
             "image_count": len(extraction.images),
             "original_stored": file_url is not None,
         },
