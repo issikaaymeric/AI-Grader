@@ -182,7 +182,7 @@ export default function ResultsPage() {
               className="text-sm text-gray-600 hover:text-gray-900 font-medium">
               ⬇ PDF
             </button>
-            <button onClick={handleReset}
+            <button type= "button" onClick={handleReset}
               className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
               ← Grade Another
             </button>
