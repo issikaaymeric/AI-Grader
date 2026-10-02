@@ -57,6 +57,8 @@ const SUBJECTS = [
 
 const MAX_INSTRUCTIONS_CHARS = 5000 * 2;
 const MAX_SUBJECT_CHARS = 100;
+const MAX_SUBMISSION_BYTES = 20 * 1024 * 1024;
+const MAX_BRIEF_BYTES = 5 * 1024 * 1024;
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -66,6 +68,7 @@ export default function Dashboard() {
   const [subject, setSubject] = useState('');
   const [gradingSystem, setGradingSystem] = useState('US');
   const [instructions, setInstructions] = useState('');
+  const [instructionsFile, setInstructionsFile] = useState(null);
 
   const onDrop = useCallback((accepted) => {
     if (accepted.length > 0) setFile(accepted[0]);
@@ -75,7 +78,23 @@ export default function Dashboard() {
     onDrop,
     accept: ACCEPTED_TYPES,
     maxFiles: 1,
-    maxSize: 20 * 1024 * 1024,
+    maxSize: MAX_SUBMISSION_BYTES,
+  });
+
+  const onBriefDrop = useCallback((accepted) => {
+    if (accepted.length > 0) setInstructionsFile(accepted[0]);
+  }, []);
+
+  const {
+    getRootProps: getBriefRootProps,
+    getInputProps: getBriefInputProps,
+    isDragActive: isBriefDragActive,
+    fileRejections: briefRejections,
+  } = useDropzone({
+    onDrop: onBriefDrop,
+    accept: ACCEPTED_TYPES,
+    maxFiles: 1,
+    maxSize: MAX_BRIEF_BYTES,
   });
 
   const handleSubmit = async (e) => {
@@ -86,8 +105,9 @@ export default function Dashboard() {
       file,
       trimmedSubject,
       gradingSystem,
-      null,                       // rubricId
-      instructions.trim() || null // optional assignment brief
+      null,                        // rubricId
+      instructions.trim() || null, // optional typed assignment brief
+      instructionsFile             // optional attached assignment brief
     );
     if (result?.ok) navigate('/results');
   };
@@ -161,11 +181,49 @@ export default function Dashboard() {
                          focus:outline-none focus:ring-2 focus:ring-indigo-500
                          ${instructionsOverLimit ? 'border-red-300' : 'border-gray-300'}`}
             />
-            {!instructions && (
-              <p className="text-xs text-gray-400 mt-1">
-                Leave blank to grade generally against the subject and rubric only.
+
+            {/* Brief as a file */}
+            {instructionsFile ? (
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border
+                              border-green-300 bg-green-50 px-4 py-2.5 text-sm">
+                <span className="truncate text-green-700">
+                  📎 {instructionsFile.name}{' '}
+                  <span className="text-gray-500">({(instructionsFile.size / 1024).toFixed(1)} KB)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setInstructionsFile(null)}
+                  className="shrink-0 text-xs font-medium text-red-600 hover:text-red-800"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div
+                {...getBriefRootProps()}
+                className={`mt-2 rounded-lg border border-dashed px-4 py-2.5 text-sm cursor-pointer transition-colors
+                  ${isBriefDragActive
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-300 text-gray-500 hover:border-indigo-400 hover:bg-gray-50'}`}
+              >
+                <input {...getBriefInputProps()} />
+                📎 {isBriefDragActive
+                  ? 'Drop the brief here'
+                  : 'Or attach the brief as a file — PDF, DOCX, TXT (max 5 MB)'}
+              </div>
+            )}
+
+            {briefRejections.length > 0 && (
+              <p className="text-sm text-red-600 mt-1">
+                {briefRejections[0].errors[0].message}
               </p>
             )}
+
+            <p className="text-xs text-gray-400 mt-1">
+              {instructions || instructionsFile
+                ? 'If you provide both, the typed text and the file contents are combined.'
+                : 'Leave blank to grade generally against the subject and rubric only.'}
+            </p>
           </div>
 
           {/* Subject */}
