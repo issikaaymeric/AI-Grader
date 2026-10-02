@@ -98,9 +98,4 @@ def answer(
             else f"TEXT: {_clip(focus['original'], 800)}\n(no change was suggested)"
         )
         content = f"[The student is asking about P{focus['index']}]\n{change}\n\nQuestion: {user_message}"
-    return llm.complete(
-        system,
-        [*history, {"role": "user", "content": content}],
-        max_tokens=900,
-        temperature=0.4,
-    )
+    return llm.complete_text(system, [*history, {"role": "user", "content": content}])
