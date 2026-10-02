@@ -51,7 +51,7 @@ function downloadJSON(result, filename) {
 export default function ResultsPage() {
   const navigate = useNavigate();
   const {
-    result, status, uploadError, uploading, lastSubmission,
+    result, status, uploadError, uploading, lastSubmission, currentAssignmentId,
     reset, resubmitAssignment,
   } = useAssignmentStore();
   const cotDetailsRef = useRef(null);
