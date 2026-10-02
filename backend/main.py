@@ -11,6 +11,8 @@ from app.api.routes.rubrics import router as rubrics_router
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.translate import router as translate_router
+from app.api.routes import markup
+
 
 from app.core.config import settings
 
@@ -37,6 +39,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth_router, prefix="/api", tags=["auth"])
 app.include_router(assignments_router, prefix="/api", tags=["assignments"])
+app.include_router(markup.router, prefix="/api")
 app.include_router(rubrics_router, prefix="/api", tags=["rubrics"])
 app.include_router(analytics_router, prefix="/api", tags=["analytics"])
 app.include_router(translate_router)  # prefix already set in the router
