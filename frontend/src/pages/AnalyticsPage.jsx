@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Area,
   AreaChart,
@@ -79,6 +80,7 @@ function EmptyChart({ title, detail }) {
 }
 
 export default function AnalyticsPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -207,7 +209,7 @@ export default function AnalyticsPage() {
                   </div>
                   <div className="analytics-legend">
                     {statusData.map((item) => (
-                      <div className="analytics-legend-row" key={item.name}><span className="analytics-legend-label"><i style={{ background: item.color }} />{item.name}</span><strong>{number(item.value)}</strong></div>
+                      <button type="button" className="analytics-legend-row analytics-legend-button" key={item.name} onClick={() => navigate('/grades')} aria-label={`Open submissions: ${item.name}`}><span className="analytics-legend-label"><i style={{ background: item.color }} />{item.name}</span><strong>{number(item.value)}</strong><span className="analytics-row-action">View</span></button>
                     ))}
                   </div>
                 </>
@@ -233,7 +235,7 @@ export default function AnalyticsPage() {
                       <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#777f96', fontSize: 11 }} interval={0} angle={gradeData.length > 7 ? -25 : 0} textAnchor={gradeData.length > 7 ? 'end' : 'middle'} height={gradeData.length > 7 ? 58 : 32} />
                       <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#8b91a7', fontSize: 12 }} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, 'Submissions']} />
-                      <Bar dataKey="count" name="Submissions" radius={[6, 6, 0, 0]} maxBarSize={44}>
+                      <Bar dataKey="count" name="Submissions" radius={[6, 6, 0, 0]} maxBarSize={44} cursor="pointer" onClick={() => navigate('/grades')}>
                         {gradeData.map((item, index) => <Cell key={item.system + item.grade} fill={PALETTE[index % PALETTE.length]} />)}
                       </Bar>
                     </BarChart>
@@ -310,7 +312,7 @@ const styles = `
 .analytics-review-summary>div:last-child{display:grid;gap:3px}.analytics-review-summary strong{font-size:25px;line-height:1;letter-spacing:-.04em}.analytics-review-summary span{font-size:11px;color:#8e91a3}
 .analytics-review-copy{font-size:12px;line-height:1.65;color:#777d93;margin:14px 2px}
 .analytics-failure-note{display:grid;gap:4px;background:#fff7e8;border-radius:10px;padding:11px 12px;color:#9a6612;font-size:11px;line-height:1.5}.analytics-failure-note strong{font-size:12px}
-.analytics-review-footnote{border-top:1px solid #f0f1f6;padding-top:13px;margin-top:14px;color:#989caf;font-size:10px;line-height:1.6}
+.analytics-legend-button{width:100%;border:0;background:transparent;text-align:left;cursor:pointer;border-radius:8px;padding:8px 6px;font:inherit}.analytics-legend-button:hover,.analytics-legend-button:focus-visible{background:#f5f3ff;outline:2px solid #c4b5fd;outline-offset:1px}.analytics-row-action{margin-left:auto;color:#6d5ce8;font-size:11px;font-weight:700;opacity:0;transition:opacity .15s}.analytics-legend-button:hover .analytics-row-action,.analytics-legend-button:focus-visible .analytics-row-action{opacity:1}.analytics-review-footnote{border-top:1px solid #f0f1f6;padding-top:13px;margin-top:14px;color:#989caf;font-size:10px;line-height:1.6}
 .analytics-first-run{display:flex;align-items:flex-start;gap:13px;padding:18px;border:1px dashed #dcd8f9;background:#faf9ff;border-radius:14px;margin-top:17px}
 .analytics-first-run>span{font-size:20px;color:#7968df}.analytics-first-run strong{font-size:13px}.analytics-first-run p{font-size:12px;color:#7c8299;line-height:1.6;margin:5px 0 0}
 .analytics-footer{font-size:10px;color:#a0a4b4;text-align:center;margin-top:23px}
