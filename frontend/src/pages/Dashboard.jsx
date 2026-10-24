@@ -117,13 +117,25 @@ export default function Dashboard() {
   const trimmedSubject = subject.trim();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-lg p-8">
+    <div className="min-h-screen bg-[#f7f8fc] flex flex-col items-center justify-start p-4 sm:p-6 lg:p-10">
+      <div className="w-full max-w-6xl">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold tracking-[0.18em] text-indigo-600 mb-2">SUBMISSION WORKSPACE</p>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Good work starts with clear feedback.</h1>
+            <p className="text-sm text-gray-500 mt-2 max-w-2xl">Upload a submission, set the context, and get structured feedback you can review and act on.</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" /> AI-assisted assessment
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.8fr)] gap-6 items-start">
+      <div className="w-full min-w-0 bg-white border border-gray-200/80 rounded-2xl shadow-sm p-5 sm:p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">MindMark</h1>
-          <p className="text-gray-500 mt-1">
-            Upload an assignment and receive evidence-based feedback in seconds.
+          <h2 className="text-xl font-bold text-gray-900">New assessment</h2>
+          <p className="text-gray-500 mt-1 text-sm">
+            Add your document and assignment context. Review AI feedback before making final academic decisions.
           </p>
         </div>
 
@@ -187,7 +199,7 @@ export default function Dashboard() {
               <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border
                               border-green-300 bg-green-50 px-4 py-2.5 text-sm">
                 <span className="truncate text-green-700">
-                  📎 {instructionsFile.name}{' '}
+                  Attachment: {instructionsFile.name}{' '}
                   <span className="text-gray-500">({(instructionsFile.size / 1024).toFixed(1)} KB)</span>
                 </span>
                 <button
@@ -207,7 +219,7 @@ export default function Dashboard() {
                     : 'border-gray-300 text-gray-500 hover:border-indigo-400 hover:bg-gray-50'}`}
               >
                 <input {...getBriefInputProps()} />
-                📎 {isBriefDragActive
+                {isBriefDragActive
                   ? 'Drop the brief here'
                   : 'Or attach the brief as a file — PDF, DOCX, TXT (max 5 MB)'}
               </div>
@@ -291,7 +303,31 @@ export default function Dashboard() {
           </button>
         </form>
       </div>
+      <aside className="space-y-5">
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg" aria-hidden="true">✦</div>
+            <div><h2 className="font-bold text-gray-900">How it works</h2><p className="text-xs text-gray-500 mt-0.5">Three simple steps</p></div>
+          </div>
+          <ol className="space-y-4">
+            <li className="flex gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700">1</span><div><p className="text-sm font-semibold text-gray-800">Upload the work</p><p className="mt-1 text-xs leading-5 text-gray-500">Choose a PDF, DOCX, or TXT file up to 20 MB.</p></div></li>
+            <li className="flex gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700">2</span><div><p className="text-sm font-semibold text-gray-800">Add context</p><p className="mt-1 text-xs leading-5 text-gray-500">Select the subject and include the brief so evaluation matches the task.</p></div></li>
+            <li className="flex gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700">3</span><div><p className="text-sm font-semibold text-gray-800">Review the feedback</p><p className="mt-1 text-xs leading-5 text-gray-500">Inspect the score, evidence, and suggested next steps.</p></div></li>
+          </ol>
+        </section>
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-3"><span className="text-emerald-600" aria-hidden="true">✓</span><h2 className="font-bold text-gray-900 text-sm">Assessment settings</h2></div>
+          <div className="flex items-center justify-between gap-3 py-3 border-b border-gray-100"><span className="text-xs text-gray-500">Grading system</span><span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">{gradingSystem === 'US' ? 'US · A–F' : 'UK · Classification'}</span></div>
+          <div className="flex items-center justify-between gap-3 py-3 border-b border-gray-100"><span className="text-xs text-gray-500">Assignment brief</span><span className={`text-xs font-semibold ${instructions.trim() || instructionsFile ? 'text-emerald-700' : 'text-gray-400'}`}>{instructions.trim() || instructionsFile ? 'Added' : 'Optional'}</span></div>
+          <div className="flex items-center justify-between gap-3 pt-3"><span className="text-xs text-gray-500">File selected</span><span className={`text-xs font-semibold ${file ? 'text-emerald-700' : 'text-gray-400'}`}>{file ? 'Ready to submit' : 'Not yet'}</span></div>
+        </section>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5">
+          <div className="flex items-start gap-3"><span className="text-lg" aria-hidden="true">ⓘ</span><div><h2 className="text-sm font-bold text-amber-900">Keep a human in the loop</h2><p className="mt-1.5 text-xs leading-5 text-amber-800">AI-generated grades can be wrong. Verify evidence and apply instructor judgment before final academic decisions.</p></div></div>
+        </div>
+      </aside>
     </div>
+    </div>
+  </div>
   );
 }
 
