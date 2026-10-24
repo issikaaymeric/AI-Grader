@@ -4,18 +4,7 @@ import AuthLayout from '../components/auth/AuthLayout';
 import { useAuthStore } from '../store/authStore';
 
 const ROLES = [
-  {
-    value: 'student',
-    label: 'Student',
-    desc: 'Submit assignments for AI grading',
-    icon: '🎓',
-  },
-  {
-    value: 'professor',
-    label: 'Professor',
-    desc: 'Create rubrics, review flagged grades',
-    icon: '📚',
-  },
+  { value: 'student', label: 'Student', desc: 'Submit assignments and review feedback' },
 ];
 
 const PW_RULES = [
@@ -48,26 +37,26 @@ export default function RegisterPage() {
   };
 
   return (
-    <AuthLayout title="Create your account" subtitle="Free to get started">
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <AuthLayout title="Create your account" subtitle="Start learning with clearer, actionable feedback.">
+      <form onSubmit={handleSubmit} className="space-y-4">
 
         {/* Role selector */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">I am a…</label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {ROLES.map(({ value, label, desc, icon }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, role: value }))}
-                className={`rounded-xl border-2 p-3 text-left transition-all
+                className={`w-full rounded-xl border p-4 text-left transition-all focus:outline-none focus:ring-4 focus:ring-indigo-100
                   ${form.role === value
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200 hover:border-gray-300'}`}
+                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
+                    : 'border-slate-200 bg-white hover:border-slate-300'}`}
               >
-                <span className="text-xl">{icon}</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">Selected account type</span>
                 <p className="font-semibold text-sm text-gray-800 mt-1">{label}</p>
-                <p className="text-xs text-gray-500">{desc}</p>
+                <p className="mt-1 text-sm leading-5 text-slate-500">{desc}</p>
               </button>
             ))}
           </div>
@@ -114,8 +103,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => setShowPw((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400
-                         hover:text-gray-600 text-sm"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500" aria-label={showPw ? "Hide password" : "Show password"}
             >
               {showPw ? 'Hide' : 'Show'}
             </button>
@@ -155,22 +143,21 @@ export default function RegisterPage() {
 
         {/* API / server error */}
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200
-                        rounded-lg px-3 py-2">
+          <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
             {error}
           </p>
         )}
 
-        <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+        <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 shadow-md shadow-indigo-200 focus:outline-none focus:ring-4 focus:ring-indigo-200">
           {loading ? 'Creating account…' : 'Create account'}
         </button>
 
-        <p className="text-center text-sm text-gray-500">
+        <div className="border-t border-slate-100 pt-4"><p className="text-center text-sm text-slate-500">
           Already have an account?{' '}
           <Link to="/login" className="text-indigo-600 font-medium hover:underline">
             Sign in
           </Link>
-        </p>
+        </p></div>
       </form>
     </AuthLayout>
   );
@@ -179,7 +166,7 @@ export default function RegisterPage() {
 function Field({ label, children }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="mb-1.5 block text-sm font-semibold text-slate-700">{label}</label>
       {children}
     </div>
   );
