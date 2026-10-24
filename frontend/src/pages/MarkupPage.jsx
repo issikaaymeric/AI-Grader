@@ -19,6 +19,7 @@ export default function MarkupPage() {
   const navigate = useNavigate();
   const { markup, loading, error, open, close, regenerate } = useMarkupStore();
   const [view, setView] = useState('markup');
+  const changedParagraphs = markup?.paragraphs?.filter((paragraph) => paragraph.changed).length ?? 0;
 
   useEffect(() => {
     open(assignmentId);
@@ -55,38 +56,36 @@ export default function MarkupPage() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-4">
-      <div className="max-w-7xl mx-auto space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate(-1)}
-              className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-              ← Results
-            </button>
-            <h1 className="text-xl font-bold text-gray-900">Marked-up Document</h1>
-            <span className="text-xs text-gray-500">
-              {markup.change_count} change{markup.change_count === 1 ? '' : 's'}
-            </span>
+    <div className="min-h-screen bg-slate-50 px-3 py-4 sm:px-6 sm:py-6">
+      <div className="mx-auto max-w-[1500px] space-y-5">
+        <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <button onClick={() => navigate(-1)} className="mb-2 rounded text-sm font-medium text-indigo-700 hover:text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500">Back to results</button>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Document review</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Review suggested edits, compare versions, and ask questions about specific paragraphs.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <SummaryStat label="Suggested changes" value={markup.change_count ?? 0} />
+            <SummaryStat label="Paragraphs reviewed" value={markup.paragraphs.length} />
+            <SummaryStat label="Paragraphs changed" value={changedParagraphs} />
           </div>
 
-          <div className="flex items-center gap-3">
-            <div role="tablist" aria-label="View mode"
-              className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div role="tablist" aria-label="Document view mode" className="grid grid-cols-3 rounded-xl border border-slate-200 bg-slate-100 p-1 sm:inline-flex">
               {VIEW_MODES.map((m) => (
                 <button key={m.id} role="tab" aria-selected={view === m.id}
                   onClick={() => setView(m.id)}
-                  className={`px-3 py-1 text-sm rounded-md font-medium ${
-                    view === m.id ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-gray-900'
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    view === m.id ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900'
                   }`}>
                   {m.label}
                 </button>
               ))}
             </div>
-            <button onClick={regenerate} disabled={processing}
-              className="text-sm text-gray-600 hover:text-gray-900 font-medium disabled:opacity-40">
-              ↻ Re-run review
+            <button onClick={regenerate} disabled={processing} className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">
+              {processing ? 'Review in progress…' : 'Run review again'}
             </button>
-          </div>
+          </div></div>
         </header>
 
         {processing && (
@@ -114,7 +113,7 @@ export default function MarkupPage() {
         )}
         {error && <Banner tone="red">{error}</Banner>}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-4 items-start">
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <DocumentPanel markup={markup} view={view} />
           <ChatPanel disabled={markup.paragraphs.length === 0} />
         </div>
@@ -130,8 +129,8 @@ function DocumentPanel({ markup, view }) {
   const setFocus = useMarkupStore((s) => s.setFocus);
 
   return (
-    <article className="bg-white rounded-2xl border border-gray-200 shadow-sm
-                        max-h-[calc(100vh-11rem)] overflow-y-auto px-8 py-6 space-y-2">
+    <article className="min-w-0 space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-8 sm:py-7 max-h-[none] xl:max-h-[calc(100vh-2rem)]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4"><div><h2 className="font-semibold text-slate-900">Submission text</h2><p className="mt-1 text-xs text-slate-500">Select a paragraph to attach it to your question.</p></div>{view === "markup" && <div className="flex flex-wrap gap-3 text-xs"><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500"></span>Suggested addition</span><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>Suggested deletion</span></div>}</div>
       {markup.paragraphs.length === 0 && (
         <p className="text-sm text-gray-500">Waiting for document text…</p>
       )}
@@ -186,10 +185,10 @@ function ParagraphBlock({ p, view, selected, onSelect }) {
 function Segments({ segments }) {
   return segments.map((s, i) => {
     if (s.type === 'insert') {
-      return <ins key={i} className="text-red-600 underline decoration-red-400">{s.text}</ins>;
+      return <ins key={i} className="rounded-sm bg-emerald-50 px-0.5 text-emerald-800 underline decoration-emerald-500 decoration-2 underline-offset-2">{s.text}</ins>;
     }
     if (s.type === 'delete') {
-      return <del key={i} className="text-red-600 line-through decoration-red-400">{s.text}</del>;
+      return <del key={i} className="rounded-sm bg-rose-50 px-0.5 text-rose-700 line-through decoration-rose-500 decoration-2">{s.text}</del>;
     }
     return <span key={i}>{s.text}</span>;
   });
@@ -222,7 +221,7 @@ function ChatPanel({ disabled }) {
 
   return (
     <aside className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col
-                      h-[calc(100vh-11rem)] lg:sticky lg:top-6">
+                      min-h-[420px] max-h-[70vh] xl:sticky xl:top-4 xl:h-[calc(100vh-2rem)] xl:max-h-none">
       <div className="px-5 py-4 border-b border-gray-100">
         <h2 className="font-semibold text-gray-800">Ask about your feedback</h2>
         <p className="text-xs text-gray-500 mt-0.5">Click a paragraph to ask about it specifically.</p>
@@ -298,6 +297,10 @@ function ChatBubble({ message }) {
 }
 
 // ── Shared ───────────────────────────────────────────────────────────────────
+
+function SummaryStat({ label, value }) {
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"><p className="text-xs text-slate-500">{label}</p><p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900">{value}</p></div>;
+}
 
 function Banner({ tone, children }) {
   const cls = tone === 'red'

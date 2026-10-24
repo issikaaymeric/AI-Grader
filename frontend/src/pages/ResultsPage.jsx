@@ -171,7 +171,7 @@ export default function ResultsPage() {
                   onChange={handleResubmitFileChange}
                 />
                 <button onClick={handleResubmitClick}
-                  className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   Resubmit
                 </button>
               </>
@@ -191,7 +191,7 @@ export default function ResultsPage() {
               Export PDF
             </button>
             <button type= "button" onClick={handleReset}
-              className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
               ← Grade Another
             </button>
           </div>
@@ -201,7 +201,7 @@ export default function ResultsPage() {
         {flag_for_review && (
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-300
                           rounded-xl px-5 py-4 text-amber-800 text-sm print-container">
-            <span aria-hidden="true" className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800"><svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg></span>
+            
             <div>
               <p className="font-semibold">Borderline Grade — Human Review Recommended</p>
               <p className="text-amber-700">
@@ -238,7 +238,7 @@ export default function ResultsPage() {
         {instructions_alignment && (
           <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200
                           rounded-xl px-5 py-4 text-sm print-container">
-            <span aria-hidden="true" className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-indigo-100 text-indigo-700"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h8" /></svg></span>
+            
             <div>
               <p className="font-semibold text-indigo-900 mb-0.5">Assignment Brief Alignment</p>
               <p className="text-indigo-800">{instructions_alignment}</p>
@@ -254,7 +254,7 @@ export default function ResultsPage() {
               return (
                 <div key={dim} className="p-4">
                   <p className="text-xs text-gray-500 capitalize mb-1 truncate">{dim}</p>
-                  <p className="text-xl font-bold text-gray-900 mb-2">{data.score.toFixed(0)}</p>
+                  <p className="text-xl font-bold text-gray-900 mb-2">{Number(data.score).toFixed(0)}</p>
                   <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div className={`h-1.5 rounded-full ${sc.bar}`} style={{ width: `${data.score}%` }} />
                   </div>
@@ -348,7 +348,7 @@ function DimensionDetail({ name, data }) {
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold text-gray-800 capitalize">{name}</span>
         <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${sc.bg} ${sc.text}`}>
-          {data.score.toFixed(0)}/100
+          {Number(data.score).toFixed(0)}/100
         </span>
       </div>
       {data.chain_of_thought && (
@@ -374,7 +374,7 @@ function SWOTQuadrant({ label, marker, items, color }) {
   return (
     <div className={`rounded-xl border ${palette.border} ${palette.bg} p-4`}>
       <h3 className={`font-semibold text-sm mb-2 ${palette.text}`}>
-        <span aria-hidden="true" className={`mr-2 inline-flex h-7 w-7 items-center justify-center rounded-md border ${palette.border} bg-white text-xs font-bold`}>{marker}</span> {label}
+         {label}
       </h3>
       <ul className="space-y-1">
         {items.map((item, i) => (
