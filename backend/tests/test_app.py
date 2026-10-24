@@ -11,7 +11,7 @@ def test_health_endpoint_reports_service_status():
 
 
 def test_history_and_analytics_routes_are_registered():
-    paths = {route.path for route in app.routes}
+    paths = set(app.openapi()['paths'])
 
     assert "/api/history/" in paths
     assert "/api/analytics/" in paths
