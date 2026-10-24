@@ -8,11 +8,18 @@ const shellCards = [
 ];
 
 const rubricCards = [
-  { name: 'Analysis', score: 88, tone: 'bg-emerald-500' },
-  { name: 'Evidence', score: 82, tone: 'bg-sky-500' },
-  { name: 'Structure', score: 91, tone: 'bg-violet-500' },
-  { name: 'Referencing', score: 76, tone: 'bg-amber-500' },
+  { name: 'Analysis', score: 88, tone: 'emerald' },
+  { name: 'Evidence', score: 82, tone: 'sky' },
+  { name: 'Structure', score: 91, tone: 'violet' },
+  { name: 'Referencing', score: 76, tone: 'amber' },
 ];
+
+const toneMap = {
+  emerald: '#10b981',
+  sky: '#38bdf8',
+  violet: '#8b5cf6',
+  amber: '#f59e0b',
+};
 
 export default function ModernDashboardShell() {
   return (
@@ -39,6 +46,7 @@ export default function ModernDashboardShell() {
               color: '#e2e8f0',
               padding: '10px 16px',
               fontWeight: 600,
+              cursor: 'pointer',
             }}
           >
             Export report
@@ -68,7 +76,14 @@ export default function ModernDashboardShell() {
               {[58, 74, 82, 91, 68].map((height, index) => (
                 <div key={height} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <div style={{ width: '68%', height: `${height}%`, borderRadius: '10px 10px 0 0', background: ['#60a5fa', '#38bdf8', '#34d399', '#a78bfa', '#fbbf24'][index] }} />
+                    <div
+                      style={{
+                        width: '68%',
+                        height: `${height}%`,
+                        borderRadius: '10px 10px 0 0',
+                        background: ['#60a5fa', '#38bdf8', '#34d399', '#a78bfa', '#fbbf24'][index],
+                      }}
+                    />
                   </div>
                   <span style={{ color: '#cbd5e1', fontSize: 12, marginTop: 8 }}>{['A', 'B', 'C', 'D', 'F'][index]}</span>
                 </div>
@@ -86,7 +101,7 @@ export default function ModernDashboardShell() {
                     <span style={{ color: '#cbd5e1' }}>{item.score}%</span>
                   </div>
                   <div style={{ height: 10, background: 'rgba(148,163,184,0.12)', borderRadius: 999 }}>
-                    <div style={{ height: '100%', width: `${item.score}%`, borderRadius: 999, background: item.tone.replace('bg-', '') === 'emerald-500' ? '#10b981' : item.tone.replace('bg-', '') === 'sky-500' ? '#38bdf8' : item.tone.replace('bg-', '') === 'violet-500' ? '#8b5cf6' : '#f59e0b' }} />
+                    <div style={{ height: '100%', width: `${item.score}%`, borderRadius: 999, background: toneMap[item.tone] }} />
                   </div>
                 </div>
               ))}
