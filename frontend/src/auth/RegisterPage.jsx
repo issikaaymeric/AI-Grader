@@ -40,26 +40,10 @@ export default function RegisterPage() {
     <AuthLayout title="Create your account" subtitle="Start learning with clearer, actionable feedback.">
       <form onSubmit={handleSubmit} className="space-y-4">
 
-        {/* Role selector */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">I am a…</label>
-          <div className="grid grid-cols-1 gap-3">
-            {ROLES.map(({ value, label, desc, icon }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, role: value }))}
-                className={`w-full rounded-xl border p-4 text-left transition-all focus:outline-none focus:ring-4 focus:ring-indigo-100
-                  ${form.role === value
-                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
-                    : 'border-slate-200 bg-white hover:border-slate-300'}`}
-              >
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">Selected account type</span>
-                <p className="font-semibold text-sm text-gray-800 mt-1">{label}</p>
-                <p className="mt-1 text-sm leading-5 text-slate-500">{desc}</p>
-              </button>
-            ))}
-          </div>
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Account type</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">Student</p>
+          <p className="mt-0.5 text-xs leading-5 text-slate-600">Submit assignments and review feedback.</p>
         </div>
 
         {/* Full name */}
