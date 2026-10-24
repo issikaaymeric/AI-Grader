@@ -1,13 +1,46 @@
-from .sanitizer import (
-    detect_prompt_injection,
-    redact_sensitive_fields,
-    sanitize_submission_payload,
-    sanitize_submission_text,
-)
+import './i18n/index.js';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
+import Navbar from "./components/Navbar";
+import AssessmentWorkbench from "./components/AssessmentWorkbench";
+import ResultsPage from "./pages/ResultsPage";
+import MarkupPage from './pages/MarkupPage';
+import MyGradesPage from "./pages/MyGradesPage";
+import LoginPage from "./auth/LoginPage";
+import RegisterPage from "./auth/RegisterPage";
+import ProfilePage from "./pages/ProfilePage";
+import SettingsPage from "./pages/SettingsPage";
 
-__all__ = [
-    "sanitize_submission_text",
-    "sanitize_submission_payload",
-    "detect_prompt_injection",
-    "redact_sensitive_fields",
-]
+function ProtectedRoute({ children }) {
+  const user = useAuthStore((state) => state.user);
+  if (!user) return <Navigate to="/login" replace />;
+  return (
+    <>
+      <Navbar />
+      <main>{children}</main>
+    </>
+  );
+}
+
+function PublicRoute({ children }) {
+  const user = useAuthStore((state) => state.user);
+  return user ? <Navigate to="/" replace /> : children;
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login"    element={<PublicRoute><LoginPage /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+        <Route path="/"         element={<ProtectedRoute><AssessmentWorkbench /></ProtectedRoute>} />
+        <Route path="/results"  element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
+        <Route path="/markup/:assignmentId" element={<MarkupPage />} />
+        <Route path="/grades"   element={<ProtectedRoute><MyGradesPage /></ProtectedRoute>} />
+        <Route path="/profile"  element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+        <Route path="*"         element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}

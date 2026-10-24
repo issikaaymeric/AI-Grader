@@ -1,114 +1,505 @@
-import React from 'react';
+"""
+assignments.py — with sync fallback when Celery/Redis is unavailable.
+Accepts free-text `instructions` from the instructor so the grader can
+evaluate against the actual assignment brief. Also extracts embedded
+images at upload time and describes them via Mistral vision *inside*
+the background grading task, so the (slow) vision calls never block
+the upload response.
+"""
+from __future__ import annotations
 
-const shellCards = [
-  { label: 'Submissions', value: '1,284', trend: '+12.4%' },
-  { label: 'Avg. score', value: '84.7%', trend: '+3.1%' },
-  { label: 'Flagged', value: '41', trend: '-8.2%' },
-  { label: 'Rubrics', value: '14', trend: '+2' },
-];
+import io
+import json
+import logging
+import os
+import threading
+import uuid
+import zipfile
+from typing import Annotated
 
-const rubricCards = [
-  { name: 'Analysis', score: 88, tone: 'emerald' },
-  { name: 'Evidence', score: 82, tone: 'sky' },
-  { name: 'Structure', score: 91, tone: 'violet' },
-  { name: 'Referencing', score: 76, tone: 'amber' },
-];
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
-const toneMap = {
-  emerald: '#10b981',
-  sky: '#38bdf8',
-  violet: '#8b5cf6',
-  amber: '#f59e0b',
-};
+from app.core.cache import cache_get
+from app.core.dependencies import CurrentUser, get_client_ip
+from app.core.supabase import get_supabase
+from app.schemas.grading import AssignmentStatusResponse, GradingSystem
+from app.services.auth.audit import log_event
+from app.services.ingestion.extractor import (
+    ExtractionResult,
+    anonymise,
+    append_image_descriptions,
+    describe_images,
+    extract,
+)
+from app.services.security.sanitizer import sanitize_submission_text
 
-export default function ModernDashboardShell() {
-  return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0b1020 0%, #121a2b 100%)',
-      color: '#edf2ff',
-      padding: '32px',
-      fontFamily: 'Inter, system-ui, sans-serif',
-    }}>
-      <div style={{ maxWidth: 1300, margin: '0 auto' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-          <div>
-            <p style={{ margin: 0, color: '#93c5fd', fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-              Academic workspace
-            </p>
-            <h1 style={{ margin: '8px 0 0', fontSize: 34, fontWeight: 700 }}>Assessment Dashboard</h1>
-          </div>
-          <button
-            style={{
-              border: '1px solid rgba(148,163,184,0.4)',
-              borderRadius: 12,
-              background: 'rgba(15,23,42,0.8)',
-              color: '#e2e8f0',
-              padding: '10px 16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            Export report
-          </button>
-        </header>
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/assignments", tags=["assignments"])
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 18, marginBottom: 28 }}>
-          {shellCards.map((card) => (
-            <div key={card.label} style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 16, padding: 20 }}>
-              <div style={{ color: '#94a3b8', fontSize: 13 }}>{card.label}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 14 }}>
-                <strong style={{ fontSize: 28 }}>{card.value}</strong>
-                <span style={{ color: '#34d399', fontSize: 12, fontWeight: 700 }}>{card.trend}</span>
-              </div>
-            </div>
-          ))}
-        </section>
+STORAGE_BUCKET = "assignments"
+MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_INSTRUCTIONS_CHARS = 2000 * 5
+MAX_INSTRUCTIONS_FILE_BYTES = 5 * 1024 * 1024
+ALLOWED_SUBMISSION_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt"}
+ALLOWED_ZIP_CONTENT_EXTENSIONS = ALLOWED_SUBMISSION_EXTENSIONS
 
-        <section style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.9fr', gap: 20 }}>
-          <div style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 18, padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 20 }}>Class distribution</h2>
-              <span style={{ color: '#93c5fd', fontSize: 12 }}>This cohort</span>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', alignItems: 'end', gap: 12, height: 220, paddingTop: 24 }}>
-              {[58, 74, 82, 91, 68].map((height, index) => (
-                <div key={height} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <div
-                      style={{
-                        width: '68%',
-                        height: `${height}%`,
-                        borderRadius: '10px 10px 0 0',
-                        background: ['#60a5fa', '#38bdf8', '#34d399', '#a78bfa', '#fbbf24'][index],
-                      }}
-                    />
-                  </div>
-                  <span style={{ color: '#cbd5e1', fontSize: 12, marginTop: 8 }}>{['A', 'B', 'C', 'D', 'F'][index]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+class AssignmentSummary(BaseModel):
+    """Lightweight row for list views — includes score and result for analytics."""
+    id: str
+    subject: str
+    grading_system: str
+    status: str
+    grade: str | None = None
+    score: float | None = None
+    result: dict | None = None
+    flagged_for_review: bool = False
+    created_at: str
 
-          <div style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 18, padding: 24 }}>
-            <h2 style={{ margin: '0 0 20px', fontSize: 20 }}>Rubric performance</h2>
-            <div style={{ display: 'grid', gap: 18 }}>
-              {rubricCards.map((item) => (
-                <div key={item.name}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{item.name}</span>
-                    <span style={{ color: '#cbd5e1' }}>{item.score}%</span>
-                  </div>
-                  <div style={{ height: 10, background: 'rgba(148,163,184,0.12)', borderRadius: 999 }}>
-                    <div style={{ height: '100%', width: `${item.score}%`, borderRadius: 999, background: toneMap[item.tone] }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
+
+class AssignmentListResponse(BaseModel):
+    items: list[AssignmentSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+def _iterate_batch_entries(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+    entries: list[tuple[str, bytes]] = []
+    for upload in files:
+        filename = upload.filename or "upload.bin"
+        ext = os.path.splitext(filename)[1].lower()
+        content = upload.file.read() if hasattr(upload, "file") else b""
+        if ext == ".zip":
+            try:
+                with zipfile.ZipFile(io.BytesIO(content), "r") as archive:
+                    for info in archive.infolist():
+                        if info.is_dir():
+                            continue
+                        inner_name = info.filename
+                        inner_ext = os.path.splitext(inner_name)[1].lower()
+                        if inner_ext not in ALLOWED_ZIP_CONTENT_EXTENSIONS:
+                            continue
+                        entries.append((inner_name, archive.read(info)))
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail=f"Invalid ZIP archive: {filename}")
+        elif ext in ALLOWED_SUBMISSION_EXTENSIONS:
+            entries.append((filename, content))
+    return entries
+
+
+# ── Storage ────────────────────────────────────────────────────────────
+
+def _upload_original(assignment_id: str, content: bytes, filename: str, content_type: str | None) -> str | None:
+    """
+    Store the original upload under an ASCII-safe key and return its public URL.
+    Never raises: grading does not depend on the stored file, but the marked-up
+    document view does, so failures are logged with a full traceback.
+    """
+    ext = os.path.splitext(filename or "")[1].lower()
+    path = f"assignments/{assignment_id}/original{ext}"
+    try:
+        bucket = get_supabase().storage.from_(STORAGE_BUCKET)
+        bucket.upload(
+            path,
+            content,
+            {
+                "content-type": content_type or "application/octet-stream",
+                "upsert": "true",
+            },
+        )
+        return bucket.get_public_url(path)
+    except Exception:
+        logger.exception("Original file upload failed for assignment %s (path=%s)", assignment_id, path)
+        return None
+
+
+def _remove_original(assignment_id: str) -> None:
+    try:
+        bucket = get_supabase().storage.from_(STORAGE_BUCKET)
+        folder = f"assignments/{assignment_id}"
+        names = [f["name"] for f in (bucket.list(folder) or []) if f.get("name")]
+        if names:
+            bucket.remove([f"{folder}/{n}" for n in names])
+    except Exception:
+        logger.exception("Storage cleanup failed for assignment %s", assignment_id)
+
+
+# ── Grading dispatch ────────────────────────────────────────────────────────
+
+def _describe_and_finalize_text(extraction: ExtractionResult) -> str:
+    if extraction.images and os.environ.get("MISTRAL_API_KEY"):
+        try:
+            describe_images(extraction.images)
+            append_image_descriptions(extraction)
+        except Exception:
+            logger.exception("Image description failed; continuing with text-only grading.")
+    return sanitize_submission_text(extraction.text)
+
+
+def _grade_in_thread(
+    assignment_id: str,
+    extraction: ExtractionResult,
+    subject: str,
+    grading_system: str,
+    rubric_dict: dict | None,
+    instructions: str | None,
+) -> None:
+    def _run():
+        from app.schemas.grading import GradingSystem as GS, Rubric
+        from app.services.scoring.subject_rubrics import get_rubric_for_subject
+        from app.services.scoring.evaluator import evaluate
+        from app.core.cache import cache_set
+
+        db = get_supabase()
+        try:
+            db.table("assignments").update({"status": "processing"}).eq(
+                "id", assignment_id
+            ).execute()
+
+            text = _describe_and_finalize_text(extraction)
+
+            rubric = Rubric(**rubric_dict) if rubric_dict else get_rubric_for_subject(subject)
+            result = evaluate(
+                submission_text=text,
+                subject=subject,
+                grading_system=GS(grading_system),
+                rubric=rubric,
+                assignment_id=assignment_id,
+                instructions=instructions,
+            )
+
+            db.table("assignments").update({
+                "status": "done",
+                "grade": result.letter_grade,
+                "score": result.raw_score,
+                "feedback_json": result.model_dump_json(),
+                "swot_analysis": result.swot.model_dump_json(),
+                "flagged_for_review": result.flag_for_review,
+            }).eq("id", assignment_id).execute()
+
+            cache_set(f"result:{assignment_id}", result.model_dump())
+
+        except Exception as exc:
+            logger.exception("Grading failed for %s: %s", assignment_id, exc)
+            db.table("assignments").update({"status": "error"}).eq(
+                "id", assignment_id
+            ).execute()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, instructions):
+    try:
+        from app.services.multi_process.tasks import grade_assignment
+        grade_assignment.delay(
+            assignment_id=assignment_id,
+            submission_text=sanitize_submission_text(extraction.text),
+            images=extraction.images,
+            subject=subject,
+            grading_system=grading_system,
+            rubric_dict=rubric_dict,
+            instructions=instructions,
+        )
+    except Exception:
+        _grade_in_thread(
+            assignment_id, extraction, subject, grading_system, rubric_dict, instructions
+        )
+
+
+def _extract_brief(content: bytes, filename: str) -> str:
+    """Text of an uploaded assignment brief. Images are ignored. Blocking."""
+    return sanitize_submission_text((extract(content, filename).text or "").strip())
+
+
+# ── Routes ────────────────────────────────────────────────────────────
+
+@router.post("/batch", status_code=status.HTTP_202_ACCEPTED)
+async def submit_batch_assignments(
+    request: Request,
+    user: CurrentUser,
+    files: Annotated[list[UploadFile], File()],
+    subject: Annotated[str, Form()],
+    grading_system: Annotated[GradingSystem, Form()],
+    instructions: Annotated[str | None, Form()] = None,
+):
+    """Queue a batch of submissions and return queued IDs for each accepted file."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files supplied for batch grading.")
+
+    db = get_supabase()
+    queued: list[dict[str, str]] = []
+    accepted_count = 0
+
+    for upload in files:
+        filename = upload.filename or "upload.bin"
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".zip":
+            payloads = _iterate_batch_entries([upload])
+        elif ext in ALLOWED_SUBMISSION_EXTENSIONS:
+            payloads = [(filename, (await upload.read()))]
+        else:
+            continue
+
+        for batch_name, payload in payloads:
+            if len(payload) > MAX_FILE_BYTES:
+                continue
+            assignment_id = str(uuid.uuid4())
+            db.table("assignments").insert({
+                "id": assignment_id,
+                "user_id": user.sub,
+                "subject": subject,
+                "grading_system": grading_system.value,
+                "instructions": sanitize_submission_text(instructions or "") or None,
+                "status": "queued",
+                "file_url": None,
+            }).execute()
+            queued.append({"assignment_id": assignment_id, "filename": batch_name, "status": "queued"})
+            accepted_count += 1
+
+    if not accepted_count:
+        raise HTTPException(status_code=400, detail="No supported files were found in the upload batch.")
+
+    log_event(
+        "assignment.batch_submit",
+        user_id=user.sub,
+        ip_address=get_client_ip(request),
+        metadata={
+            "subject": subject,
+            "system": grading_system.value,
+            "accepted_count": accepted_count,
+            "requested_count": len(files),
+        },
+    )
+
+    return {
+        "job_id": str(uuid.uuid4()),
+        "count": accepted_count,
+        "assignments": queued,
+        "status": "queued",
+    }
+
+
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
+async def submit_assignment(
+    request: Request,
+    user: CurrentUser,
+    file: Annotated[UploadFile, File()],
+    subject: Annotated[str, Form()],
+    grading_system: Annotated[GradingSystem, Form()],
+    instructions: Annotated[str | None, Form()] = None,
+    rubric_id: Annotated[str | None, Form()] = None,
+    instructions_file: Annotated[UploadFile | None, File()] = None,
+):
+    content = await file.read()
+
+    filename = file.filename or "upload.txt"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_SUBMISSION_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext or '(none)'}'. Allowed: {sorted(ALLOWED_SUBMISSION_EXTENSIONS)}.",
+        )
+
+    if len(content) > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds {MAX_FILE_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    brief_text = ""
+    brief_name = ""
+    if instructions_file is not None and instructions_file.filename:
+        brief_bytes = await instructions_file.read()
+        if len(brief_bytes) > MAX_INSTRUCTIONS_FILE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Instructions file exceeds {MAX_INSTRUCTIONS_FILE_BYTES // (1024 * 1024)} MB limit.",
+            )
+        brief_name = os.path.basename(instructions_file.filename)
+        try:
+            brief_text = await run_in_threadpool(_extract_brief, brief_bytes, brief_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Instructions file: {exc}") from exc
+        except Exception as exc:
+            logger.exception("Could not read instructions file %s", brief_name)
+            raise HTTPException(
+                status_code=400, detail="Instructions file could not be read."
+            ) from exc
+        if not brief_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Instructions file contains no readable text (scanned PDFs are not supported).",
+            )
+
+    parts: list[str] = []
+    typed = sanitize_submission_text((instructions or "").strip())
+    if typed:
+        parts.append(typed)
+    if brief_text:
+        parts.append(f"[Attached brief: {brief_name}]\n{brief_text}")
+    instructions = sanitize_submission_text("\n\n".join(parts)) or None
+
+    if instructions and len(instructions) > MAX_INSTRUCTIONS_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Instructions exceed {MAX_INSTRUCTIONS_CHARS} characters "
+                f"(typed text and attached file combined)."
+            ),
+        )
+
+    try:
+        extraction = extract(content, filename)
+        extraction.text = sanitize_submission_text(anonymise(extraction.text))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    assignment_id = str(uuid.uuid4())
+    db = get_supabase()
+
+    file_url = await run_in_threadpool(
+        _upload_original, assignment_id, content, filename, file.content_type
+    )
+
+    rubric_dict: dict | None = None
+    if rubric_id:
+        row = db.table("rubrics").select("*").eq("id", rubric_id).limit(1).execute()
+        if not row.data:
+            raise HTTPException(status_code=404, detail="Rubric not found.")
+        rubric_dict = row.data[0].get("criteria")
+
+    db.table("assignments").insert({
+        "id":             assignment_id,
+        "user_id":        user.sub,
+        "subject":        subject,
+        "grading_system": grading_system.value,
+        "instructions":   instructions,
+        "rubric_id":      rubric_id,
+        "file_url":       file_url,
+        "status":         "pending",
+    }).execute()
+
+    log_event(
+        "assignment.submit",
+        user_id=user.sub,
+        ip_address=get_client_ip(request),
+        metadata={
+            "assignment_id": assignment_id,
+            "subject": subject,
+            "system": grading_system.value,
+            "has_instructions": bool(instructions),
+            "has_instructions_file": bool(brief_text),
+            "image_count": len(extraction.images),
+            "original_stored": file_url is not None,
+        },
+    )
+
+    _dispatch(
+        assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions
+    )
+
+    return {"assignment_id": assignment_id, "status": "pending"}
+
+
+@router.get("/", response_model=AssignmentListResponse)
+async def list_assignments(
+    user: CurrentUser,
+    status_filter: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    db = get_supabase()
+    query = db.table("assignments").select(
+        "id, subject, grading_system, status, grade, score, feedback_json, flagged_for_review, created_at, user_id",
+        count="exact",
+    )
+
+    if user.role.value != "admin":
+        query = query.eq("user_id", user.sub)
+
+    if status_filter:
+        query = query.eq("status", status_filter)
+
+    query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+    res = query.execute()
+    rows = res.data or []
+    total = res.count or len(rows)
+
+    items = [
+        AssignmentSummary(
+            id=r["id"], subject=r["subject"], grading_system=r["grading_system"],
+            status=r["status"], grade=r.get("grade"), score=r.get("score"),
+            result=json.loads(r["feedback_json"]) if r.get("feedback_json") else None,
+            flagged_for_review=bool(r.get("flagged_for_review")), created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+    return AssignmentListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/{assignment_id}", response_model=AssignmentStatusResponse)
+async def get_assignment(assignment_id: str, user: CurrentUser):
+    res = (
+        get_supabase()
+        .table("assignments")
+        .select(
+            "id, user_id, status, grade, score, feedback_json, "
+            "flagged_for_review, subject, grading_system, instructions, rubric_id"
+        )
+        .eq("id", assignment_id)
+        .limit(1)
+        .execute()
+    )
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    data = res.data[0]
+    if user.role.value != "admin" and data["user_id"] != user.sub:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    cached = cache_get(f"result:{assignment_id}")
+    if cached:
+        result = cached
+        effective_status = "done"
+    elif data["status"] == "done" and data.get("feedback_json"):
+        raw = data["feedback_json"]
+        result = json.loads(raw) if isinstance(raw, str) else raw
+        effective_status = data["status"]
+    else:
+        result = None
+        effective_status = data["status"]
+
+    return AssignmentStatusResponse(
+        id=assignment_id,
+        status=effective_status,
+        result=result,
+        subject=data.get("subject"),
+        grading_system=data.get("grading_system"),
+        instructions=data.get("instructions"),
+        rubric_id=data.get("rubric_id"),
+    )
+
+
+@router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_assignment(assignment_id: str, user: CurrentUser):
+    db = get_supabase()
+
+    res = db.table("assignments").select("user_id").eq("id", assignment_id).limit(1).execute()
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    if user.role.value != "admin" and res.data[0]["user_id"] != user.sub:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    db.table("assignments").delete().eq("id", assignment_id).execute()
+    await run_in_threadpool(_remove_original, assignment_id)
+
+    return None
