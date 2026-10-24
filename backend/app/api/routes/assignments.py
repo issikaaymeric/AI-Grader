@@ -1,15 +1,15 @@
 import './i18n/index.js';
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useAuthStore } from "./store/authStore";
-import Navbar from "./components/Navbar";
-import AssessmentWorkbench from "./components/AssessmentWorkbench";
-import ResultsPage from "./pages/ResultsPage";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './store/authStore';
+import Navbar from './components/Navbar';
+import Dashboard from './pages/Dashboard';
+import ResultsPage from './pages/ResultsPage';
 import MarkupPage from './pages/MarkupPage';
-import MyGradesPage from "./pages/MyGradesPage";
-import LoginPage from "./auth/LoginPage";
-import RegisterPage from "./auth/RegisterPage";
-import ProfilePage from "./pages/ProfilePage";
-import SettingsPage from "./pages/SettingsPage";
+import MyGradesPage from './pages/MyGradesPage';
+import LoginPage from './auth/LoginPage';
+import RegisterPage from './auth/RegisterPage';
+import ProfilePage from './pages/ProfilePage';
+import SettingsPage from './pages/SettingsPage';
 
 function ProtectedRoute({ children }) {
   const user = useAuthStore((state) => state.user);
@@ -31,15 +31,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login"    element={<PublicRoute><LoginPage /></PublicRoute>} />
+        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-        <Route path="/"         element={<ProtectedRoute><AssessmentWorkbench /></ProtectedRoute>} />
-        <Route path="/results"  element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
+        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/results" element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
         <Route path="/markup/:assignmentId" element={<MarkupPage />} />
-        <Route path="/grades"   element={<ProtectedRoute><MyGradesPage /></ProtectedRoute>} />
-        <Route path="/profile"  element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/grades" element={<ProtectedRoute><MyGradesPage /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-        <Route path="*"         element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
