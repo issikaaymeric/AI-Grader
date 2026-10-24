@@ -106,7 +106,7 @@ export default function ResultsPage() {
     return (
       <FullPageCenter>
         <div className="text-center space-y-4">
-          <PulsingBrain />
+          <GradingIndicator />
           <h2 className="text-xl font-semibold text-gray-800">
             {uploading ? 'Uploading resubmission…'
               : status === 'pending' ? 'Queued for grading…'
@@ -124,7 +124,7 @@ export default function ResultsPage() {
     return (
       <FullPageCenter>
         <div className="bg-red-50 border border-red-200 rounded-2xl p-8 max-w-md text-center space-y-4">
-          <p className="text-4xl">⚠️</p>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-700" aria-hidden="true"><svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg></div>
           <h2 className="text-xl font-semibold text-red-700">Grading Failed</h2>
           <p className="text-red-600 text-sm">{uploadError ?? 'An unexpected error occurred.'}</p>
           <button onClick={handleReset} className="btn-primary">Try Again</button>
@@ -137,29 +137,31 @@ export default function ResultsPage() {
 
   const {
     letter_grade, raw_score, grading_system, summary,
-    dimension_scores, swot, anchored_feedback, next_steps,
+    dimension_scores = {}, swot = {}, anchored_feedback, next_steps,
     instructions_alignment, flag_for_review, chain_of_thought,
   } = result;
 
+  const numericScore = Number(raw_score);
+  const hasNumericScore = Number.isFinite(numericScore);
   const colors = gradeColor(letter_grade, grading_system);
-  const dimEntries = Object.entries(dimension_scores);
+  const dimEntries = Object.entries(dimension_scores ?? {}).filter(([, data]) => data && Number.isFinite(Number(data.score)));
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-slate-50 py-6 sm:py-10 px-3 sm:px-4">
       <style>{`
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
-          .print-container { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
+          .print-container { box-shadow: none !important; border: 1px solid #e5e7eb !important; break-inside: avoid; }
         }
       `}</style>
 
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
 
         {/* ── Top Bar ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between no-print">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between no-print">
           <h1 className="text-2xl font-bold text-gray-900">Grading Results</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {lastSubmission && (
               <>
                 <input
@@ -170,23 +172,23 @@ export default function ResultsPage() {
                 />
                 <button onClick={handleResubmitClick}
                   className="text-sm text-gray-600 hover:text-gray-900 font-medium">
-                  🔁 Resubmit
+                  Resubmit
                 </button>
               </>
             )}
             <button onClick={handleDownloadJSON}
               className="text-sm text-gray-600 hover:text-gray-900 font-medium">
-              ⬇ JSON
+              Export JSON
             </button>
             {currentAssignmentId && (
                 <button onClick={() => navigate(`/markup/${currentAssignmentId}`)}
                   className="text-sm text-gray-600 hover:text-gray-900 font-medium">
-                  📝 Marked-up doc
+                  Marked-up document
                 </button>
               )}
             <button onClick={handleDownloadPDF}
               className="text-sm text-gray-600 hover:text-gray-900 font-medium">
-              ⬇ PDF
+              Export PDF
             </button>
             <button type= "button" onClick={handleReset}
               className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
@@ -199,7 +201,7 @@ export default function ResultsPage() {
         {flag_for_review && (
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-300
                           rounded-xl px-5 py-4 text-amber-800 text-sm print-container">
-            <span className="text-xl">🔍</span>
+            <span aria-hidden="true" className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800"><svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg></span>
             <div>
               <p className="font-semibold">Borderline Grade — Human Review Recommended</p>
               <p className="text-amber-700">
@@ -221,7 +223,7 @@ export default function ResultsPage() {
                 {grading_system} System · {grading_system === 'US' ? 'Additive' : 'Deductive'}
               </p>
               <p className="text-4xl font-bold text-gray-900 mt-1">
-                {raw_score.toFixed(1)}<span className="text-xl text-gray-400">/100</span>
+                {hasNumericScore ? numericScore.toFixed(1) : '—'}<span className="text-xl text-gray-400">/100</span>
               </p>
             </div>
           </div>
@@ -236,7 +238,7 @@ export default function ResultsPage() {
         {instructions_alignment && (
           <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200
                           rounded-xl px-5 py-4 text-sm print-container">
-            <span className="text-lg shrink-0">📋</span>
+            <span aria-hidden="true" className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-indigo-100 text-indigo-700"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h8" /></svg></span>
             <div>
               <p className="font-semibold text-indigo-900 mb-0.5">Assignment Brief Alignment</p>
               <p className="text-indigo-800">{instructions_alignment}</p>
@@ -245,7 +247,7 @@ export default function ResultsPage() {
         )}
 
         {/* ── Dimension Score Grid ──────────────────────────────────────── */}
-        <Section title="Dimension Scores" noPadding>
+        <Section title="Dimension Scores" description="How the submission performed against each evaluation criterion." noPadding>
           <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
             {dimEntries.map(([dim, data]) => {
               const sc = scoreColor(data.score);
@@ -263,7 +265,7 @@ export default function ResultsPage() {
         </Section>
 
         {/* ── Per-Dimension Detail (rationale + evidence together) ─────────── */}
-        <Section title="Evaluator Rationale">
+        <Section title="Evaluator Rationale" description="Review the score explanations and supporting evidence for each criterion.">
           <div className="space-y-5">
             {dimEntries.map(([dim, data]) => (
               <DimensionDetail key={dim} name={dim} data={data} />
@@ -291,15 +293,15 @@ export default function ResultsPage() {
         {/* ── SWOT Analysis ─────────────────────────────────────────────── */}
         <Section title="SWOT Analysis">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <SWOTQuadrant label="Strengths" emoji="💪" items={swot.strengths} color="green" />
-            <SWOTQuadrant label="Weaknesses" emoji="⚠️" items={swot.weaknesses} color="red" />
-            <SWOTQuadrant label="Opportunities" emoji="🚀" items={swot.opportunities} color="blue" />
-            <SWOTQuadrant label="Threats" emoji="🔻" items={swot.threats} color="orange" />
+            <SWOTQuadrant label="Strengths" marker="S" items={swot?.strengths} color="green" />
+            <SWOTQuadrant label="Weaknesses" marker="W" items={swot?.weaknesses} color="red" />
+            <SWOTQuadrant label="Opportunities" marker="O" items={swot?.opportunities} color="blue" />
+            <SWOTQuadrant label="Threats" marker="T" items={swot?.threats} color="orange" />
           </div>
         </Section>
 
         {/* ── Anchored Feedback Narrative ───────────────────────────────── */}
-        <Section title="Detailed Feedback">
+        <Section title="Detailed Feedback" description="Specific feedback to help improve the next submission.">
           <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
             {anchored_feedback}
           </div>
@@ -310,7 +312,7 @@ export default function ResultsPage() {
           <details ref={cotDetailsRef} className="bg-white rounded-xl border border-gray-200 shadow-sm print-container">
             <summary className="px-6 py-4 font-semibold text-gray-700 cursor-pointer
                                 hover:bg-gray-50 rounded-xl">
-              🔗 AI Chain of Thought (Transparency Log)
+              AI Evaluation Trace
             </summary>
             <ol className="px-6 pb-6 mt-2 space-y-2 list-decimal list-inside">
               {chain_of_thought.map((step, i) => (
@@ -327,12 +329,15 @@ export default function ResultsPage() {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function Section({ title, children, noPadding = false }) {
+function Section({ title, description, children, noPadding = false }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden print-container">
-      <h2 className="text-lg font-semibold text-gray-800 px-6 pt-6 pb-3">{title}</h2>
+    <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden print-container">
+      <div className="px-6 pt-6 pb-4">
+        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        {description && <p className="mt-1 text-sm leading-relaxed text-gray-500">{description}</p>}
+      </div>
       <div className={noPadding ? '' : 'px-6 pb-6'}>{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -363,13 +368,13 @@ function DimensionDetail({ name, data }) {
   );
 }
 
-function SWOTQuadrant({ label, emoji, items, color }) {
+function SWOTQuadrant({ label, marker, items, color }) {
   const palette = COLOR_CLASSES[color];
   if (!items?.length) return null;
   return (
     <div className={`rounded-xl border ${palette.border} ${palette.bg} p-4`}>
       <h3 className={`font-semibold text-sm mb-2 ${palette.text}`}>
-        {emoji} {label}
+        <span aria-hidden="true" className={`mr-2 inline-flex h-7 w-7 items-center justify-center rounded-md border ${palette.border} bg-white text-xs font-bold`}>{marker}</span> {label}
       </h3>
       <ul className="space-y-1">
         {items.map((item, i) => (
@@ -391,12 +396,12 @@ function FullPageCenter({ children }) {
   );
 }
 
-function PulsingBrain() {
+function GradingIndicator() {
   return (
     <div className="relative w-16 h-16 mx-auto">
       <div className="absolute inset-0 rounded-full bg-indigo-200 animate-ping opacity-60" />
       <div className="relative w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-3xl">
-        🧠
+        AI
       </div>
     </div>
   );
