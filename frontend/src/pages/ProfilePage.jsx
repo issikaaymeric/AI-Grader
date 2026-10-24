@@ -126,6 +126,19 @@ function aggregateSwot(history) {
 }
 
 // ── Components ──────────────────────────────────────────────────────────────
+function DistributionTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+  const count = Number(point.count);
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg">
+      <p className="text-sm font-semibold text-gray-900">{label}</p>
+      <p className="mt-1 text-sm text-pink-600">Assignments: {Number.isFinite(count) ? count : 0}</p>
+    </div>
+  );
+}
+
 function StatCard({ label, value, sub, color = '#7C3AED' }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col gap-1">
@@ -289,7 +302,7 @@ export default function ProfilePage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="range" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => [v, 'Assignments']} />
+                <Tooltip content={<DistributionTooltip />} cursor={{ fill: '#fdf2f8' }} />
                 <Bar dataKey="count" fill="#EC4899" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>}
