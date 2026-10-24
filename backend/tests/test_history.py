@@ -4,8 +4,9 @@ from app.api.routes import history
 
 
 class FakeQuery:
-    def __init__(self, rows):
+    def __init__(self, rows, count=None):
         self.rows = rows
+        self.count = len(rows) if count is None else count
         self.filters = []
         self.order_args = None
         self.range_args = None
@@ -14,8 +15,9 @@ class FakeQuery:
         self.table_name = name
         return self
 
-    def select(self, columns):
+    def select(self, columns, **kwargs):
         self.columns = columns
+        self.select_options = kwargs
         return self
 
     def eq(self, key, value):
@@ -43,7 +45,7 @@ def test_load_history_filters_by_user_and_parses_result(monkeypatch):
             "created_at": "2026-10-24T10:00:00Z",
         }
     ]
-    fake_db = FakeQuery(rows)
+    fake_db = FakeQuery(rows, count=37)
     monkeypatch.setattr(history, "get_supabase", lambda: fake_db)
 
     result = history._load_history("user-1", limit=10, offset=20)
@@ -52,6 +54,8 @@ def test_load_history_filters_by_user_and_parses_result(monkeypatch):
     assert ("user_id", "user-1") in fake_db.filters
     assert fake_db.order_args == ("created_at", True)
     assert fake_db.range_args == (20, 29)
+    assert fake_db.select_options == {"count": "exact"}
+    assert result["total"] == 37
     assert result["items"][0]["result"] == {"raw_score": 88}
     assert "feedback_json" not in result["items"][0]
 
