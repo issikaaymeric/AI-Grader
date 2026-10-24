@@ -199,7 +199,7 @@ export default function Dashboard() {
               <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border
                               border-green-300 bg-green-50 px-4 py-2.5 text-sm">
                 <span className="truncate text-green-700">
-                  📎 {instructionsFile.name}{' '}
+                  Attachment: {instructionsFile.name}{' '}
                   <span className="text-gray-500">({(instructionsFile.size / 1024).toFixed(1)} KB)</span>
                 </span>
                 <button
