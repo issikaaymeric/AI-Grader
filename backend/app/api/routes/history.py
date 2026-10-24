@@ -18,7 +18,7 @@ def _load_history(user_id: str, limit: int, offset: int) -> dict[str, Any]:
     response = (
         get_supabase()
         .table("assignments")
-        .select("id, subject, grading_system, status, grade, score, flagged_for_review, created_at, feedback_json")
+        .select("id, subject, grading_system, status, grade, score, flagged_for_review, created_at, feedback_json", count="exact")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .range(offset, offset + limit - 1)
@@ -36,7 +36,7 @@ def _load_history(user_id: str, limit: int, offset: int) -> dict[str, Any]:
         else:
             item["result"] = None
         items.append(item)
-    return {"items": items, "limit": limit, "offset": offset}
+    return {"items": items, "total": response.count if response.count is not None else len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/")
