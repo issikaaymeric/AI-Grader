@@ -118,6 +118,7 @@ export default function AnalyticsPage() {
   }), [data]);
 
   const hasRecords = (data?.total_assignments || 0) > 0;
+  const scoreDisplay = data?.average_score == null ? '—' : new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(data.average_score);
   const tooltipStyle = { borderRadius: 12, border: '1px solid #e8eaf2', boxShadow: '0 8px 24px rgba(25, 30, 60, .08)' };
 
   return (
@@ -155,6 +156,7 @@ export default function AnalyticsPage() {
 
           <div className="analytics-metrics-grid">
             <MetricCard label="Total submissions" value={number(data.total_assignments)} hint="All submissions in your workspace" icon="↗" />
+            <MetricCard label="Average score" value={scoreDisplay} hint={data.scored_assignments ? `Across ${number(data.scored_assignments)} numeric scores` : "No numeric scores yet"} tone="teal" icon="↗" />
             <MetricCard label="Successfully graded" value={number(data.graded_assignments)} hint={data.total_assignments ? `${Math.round((data.graded_assignments / data.total_assignments) * 100)}% of all submissions` : 'No graded submissions yet'} tone="teal" icon="✓" />
             <MetricCard label="Awaiting grading" value={number(data.pending_assignments)} hint="Pending, queued, or processing" tone="amber" icon="◷" />
             <MetricCard label="Needs human review" value={number(data.flagged_for_review)} hint="Check these before final decisions" tone="rose" icon="!" />
@@ -306,8 +308,8 @@ const styles = `
 .analytics-loading{display:flex;align-items:center;gap:10px;min-height:220px;justify-content:center;color:#777d93;font-size:13px}
 .analytics-loader{width:19px;height:19px;border:2px solid #e5e1fb;border-top-color:#7565e8;border-radius:50%;animation:analytics-spin .8s linear infinite}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-@media(max-width:1050px){.analytics-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-main-grid{grid-template-columns:minmax(0,1.3fr) minmax(280px,1fr)}}
-@media(max-width:760px){.analytics-page{padding-top:24px}.analytics-main-grid{grid-template-columns:1fr}.analytics-header{align-items:flex-start}.analytics-refresh{width:100%;justify-content:center}.analytics-metric{padding:16px}.analytics-panel{padding:17px}.analytics-area-chart{height:220px}.analytics-bar-chart{height:250px}}
+@media(max-width:1150px){.analytics-metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.analytics-main-grid{grid-template-columns:minmax(0,1.3fr) minmax(280px,1fr)}}
+@media(max-width:760px){.analytics-page{padding-top:24px}.analytics-main-grid{grid-template-columns:1fr}.analytics-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-header{align-items:flex-start}.analytics-refresh{width:100%;justify-content:center}.analytics-metric{padding:16px}.analytics-panel{padding:17px}.analytics-area-chart{height:220px}.analytics-bar-chart{height:250px}}
 @media(max-width:420px){.analytics-metrics-grid{grid-template-columns:1fr 1fr;gap:9px}.analytics-metric{padding:13px}.analytics-metric-value{font-size:25px}.analytics-metric-hint{font-size:10px}.analytics-metric-top{align-items:flex-start}.analytics-metric-icon{width:29px;height:29px}.analytics-header p{font-size:13px}}
 @media(prefers-reduced-motion:reduce){.analytics-page *{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 `;
