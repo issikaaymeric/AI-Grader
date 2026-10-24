@@ -409,21 +409,31 @@ function GradingIndicator() {
           0%, 100% { transform: scaleX(1); opacity: 0.22; }
           45%, 55% { transform: scaleX(0.58); opacity: 0.1; }
         }
+        @keyframes grading-ball-color {
+          from { filter: hue-rotate(0deg); }
+          to { filter: hue-rotate(360deg); }
+        }
         @keyframes grading-progress-sweep {
           0% { transform: translateX(-110%); }
           100% { transform: translateX(340%); }
         }
         .grading-ball {
-          animation: grading-ball-jump 850ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
-          will-change: transform;
+          animation:
+            grading-ball-jump 850ms cubic-bezier(0.45, 0, 0.55, 1) infinite,
+            grading-ball-color 4s linear infinite;
+          will-change: transform, filter;
         }
         .grading-ball-shadow {
-          animation: grading-ball-shadow 850ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
-          will-change: transform, opacity;
+          animation:
+            grading-ball-shadow 850ms cubic-bezier(0.45, 0, 0.55, 1) infinite,
+            grading-ball-color 4s linear infinite;
+          will-change: transform, opacity, filter;
         }
         .grading-progress-sweep {
-          animation: grading-progress-sweep 1.6s ease-in-out infinite;
-          will-change: transform;
+          animation:
+            grading-progress-sweep 1.6s ease-in-out infinite,
+            grading-ball-color 4s linear infinite;
+          will-change: transform, filter;
         }
         @media (prefers-reduced-motion: reduce) {
           .grading-ball, .grading-ball-shadow, .grading-progress-sweep {
