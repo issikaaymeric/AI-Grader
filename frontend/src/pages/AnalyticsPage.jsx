@@ -29,12 +29,23 @@ const STATUS_COLORS = {
 const number = (value) => new Intl.NumberFormat().format(value ?? 0);
 const titleCase = (value) => String(value || 'Unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+function MetricIcon({ name }) {
+  const paths = {
+    submissions: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
+    score: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    graded: <><path d="m5 12 4 4L19 6" /></>,
+    pending: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    review: <><path d="M12 3 2.8 20h18.4L12 3Z" /><path d="M12 9v4M12 16h.01" /></>,
+  };
+  return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] || paths.submissions}</svg>;
+}
+
 function MetricCard({ label, value, hint, tone = 'violet', icon }) {
   return (
     <article className="analytics-metric">
       <div className="analytics-metric-top">
         <span className="analytics-muted">{label}</span>
-        <span className={`analytics-metric-icon ${tone}`} aria-hidden="true">{icon}</span>
+        <span className={`analytics-metric-icon ${tone}`} aria-hidden="true"><MetricIcon name={icon} /></span>
       </div>
       <div className="analytics-metric-value">{value}</div>
       <p className="analytics-metric-hint">{hint}</p>
@@ -155,11 +166,11 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="analytics-metrics-grid">
-            <MetricCard label="Total submissions" value={number(data.total_assignments)} hint="All submissions in your workspace" icon="↗" />
-            <MetricCard label="Average score" value={scoreDisplay} hint={data.scored_assignments ? `Across ${number(data.scored_assignments)} numeric scores` : "No numeric scores yet"} tone="teal" icon="↗" />
-            <MetricCard label="Successfully graded" value={number(data.graded_assignments)} hint={data.total_assignments ? `${Math.round((data.graded_assignments / data.total_assignments) * 100)}% of all submissions` : 'No graded submissions yet'} tone="teal" icon="✓" />
-            <MetricCard label="Awaiting grading" value={number(data.pending_assignments)} hint="Pending, queued, or processing" tone="amber" icon="◷" />
-            <MetricCard label="Needs human review" value={number(data.flagged_for_review)} hint="Check these before final decisions" tone="rose" icon="!" />
+            <MetricCard label="Total submissions" value={number(data.total_assignments)} hint="All submissions in your workspace" icon="submissions" />
+            <MetricCard label="Average score" value={scoreDisplay} hint={data.scored_assignments ? `Across ${number(data.scored_assignments)} numeric scores` : "No numeric scores yet"} tone="teal" icon="score" />
+            <MetricCard label="Successfully graded" value={number(data.graded_assignments)} hint={data.total_assignments ? `${Math.round((data.graded_assignments / data.total_assignments) * 100)}% of all submissions` : 'No graded submissions yet'} tone="teal" icon="graded" />
+            <MetricCard label="Awaiting grading" value={number(data.pending_assignments)} hint="Pending, queued, or processing" tone="amber" icon="pending" />
+            <MetricCard label="Needs human review" value={number(data.flagged_for_review)} hint="Check these before final decisions" tone="rose" icon="review" />
           </div>
 
           <div className="analytics-main-grid">
