@@ -398,20 +398,66 @@ function FullPageCenter({ children }) {
 
 function GradingIndicator() {
   return (
-    <div className="relative w-16 h-16 mx-auto">
-      <div className="absolute inset-0 rounded-full bg-indigo-200 animate-ping opacity-60" />
-      <div className="relative w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-3xl">
-        AI
+    <>
+      <style>{`
+        @keyframes grading-ball-jump {
+          0%, 100% { transform: translateY(0) scaleX(1.08) scaleY(0.92); }
+          45% { transform: translateY(-30px) scaleX(0.94) scaleY(1.06); }
+          55% { transform: translateY(-30px) scaleX(0.94) scaleY(1.06); }
+        }
+        @keyframes grading-ball-shadow {
+          0%, 100% { transform: scaleX(1); opacity: 0.22; }
+          45%, 55% { transform: scaleX(0.58); opacity: 0.1; }
+        }
+        @keyframes grading-ball-color {
+          from { filter: hue-rotate(0deg); }
+          to { filter: hue-rotate(360deg); }
+        }
+        @keyframes grading-progress-sweep {
+          0% { transform: translateX(-110%); }
+          100% { transform: translateX(340%); }
+        }
+        .grading-ball {
+          animation:
+            grading-ball-jump 850ms cubic-bezier(0.45, 0, 0.55, 1) infinite,
+            grading-ball-color 4s linear infinite;
+          will-change: transform, filter;
+        }
+        .grading-ball-shadow {
+          animation:
+            grading-ball-shadow 850ms cubic-bezier(0.45, 0, 0.55, 1) infinite,
+            grading-ball-color 4s linear infinite;
+          will-change: transform, opacity, filter;
+        }
+        .grading-progress-sweep {
+          animation:
+            grading-progress-sweep 1.6s ease-in-out infinite,
+            grading-ball-color 4s linear infinite;
+          will-change: transform, filter;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .grading-ball, .grading-ball-shadow, .grading-progress-sweep {
+            animation-duration: 2.8s;
+          }
+        }
+      `}</style>
+      <div className="relative mx-auto h-20 w-24" role="img" aria-label="A ball bouncing while your submission is graded">
+        <div className="grading-ball absolute left-1/2 top-7 h-9 w-9 -translate-x-1/2 rounded-full bg-gradient-to-br from-indigo-400 via-indigo-600 to-violet-700 shadow-lg shadow-indigo-200" />
+        <div className="grading-ball-shadow absolute bottom-1 left-1/2 h-2 w-10 -translate-x-1/2 rounded-[50%] bg-indigo-900 blur-[2px]" />
       </div>
-    </div>
+    </>
   );
 }
 
 function ProgressBar() {
   return (
-    <div className="w-64 mx-auto h-1.5 bg-gray-200 rounded-full overflow-hidden">
-      <div className="h-full bg-indigo-500 rounded-full animate-[progress_3s_ease-in-out_infinite]"
-        style={{ width: '60%' }} />
+    <div
+      className="mx-auto h-1.5 w-64 overflow-hidden rounded-full bg-indigo-100"
+      role="progressbar"
+      aria-label="Grading in progress"
+      aria-valuetext="Grading is in progress"
+    >
+      <div className="grading-progress-sweep h-full w-1/3 rounded-full bg-gradient-to-r from-indigo-400 via-indigo-600 to-violet-500" />
     </div>
   );
 }
