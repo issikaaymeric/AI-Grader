@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   LineChart, Line, BarChart, Bar, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -13,7 +12,7 @@ import { useAssignmentStore } from '../store/assignmentStore';
 async function fetchAIInsight(history, token) {
   const summary = history.map((a) => ({
     subject: a.subject,
-    score: a.result?.score ?? null,
+    score: getScore(a),
     date: a.created_at,
     swot: a.result?.swot ?? null,
   }));
