@@ -219,7 +219,7 @@ export default function Dashboard() {
                     : 'border-gray-300 text-gray-500 hover:border-indigo-400 hover:bg-gray-50'}`}
               >
                 <input {...getBriefInputProps()} />
-                📎 {isBriefDragActive
+                {isBriefDragActive
                   ? 'Drop the brief here'
                   : 'Or attach the brief as a file — PDF, DOCX, TXT (max 5 MB)'}
               </div>
