@@ -1,7 +1,7 @@
 """Authenticated grading analytics scoped to the requesting user's records."""
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 
 from fastapi import APIRouter
@@ -89,6 +89,7 @@ def _load_analytics(user_id: str) -> dict:
         ),
         "failed_assignments": status_counts.get("error", 0) + status_counts.get("failed", 0),
         "flagged_for_review": flagged_count,
+        "scored_assignments": len(scores),
         "average_score": round(sum(scores) / len(scores), 2) if scores else None,
         "grade_distribution": grade_distribution,
         "status_distribution": dict(status_counts),
