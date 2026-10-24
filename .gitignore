@@ -1,5 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+htmlcov/
 
+# Node / frontend
 node_modules/
+dist/
 dist-electron/
 desktop/dist/
 
+# Local runtime data
+backend/app/data/
+*.log
+.DS_Store

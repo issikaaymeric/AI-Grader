@@ -284,7 +284,7 @@ def _extract_docx(data: bytes) -> ExtractionResult:
 # ── Anonymisation ─────────────────────────────────────────────────────────────
 
 _STUDENT_ID_RE = re.compile(r"\b[A-Z]{1,3}\d{5,10}\b")
-_NAME_HEADER_RE = re.compile(r"(?im)^(student|name|author|submitted by)[:\s]+.+$")
+_NAME_HEADER_RE = re.compile(r"(?im)^(student(?!\s+id\b)|name|author|submitted by)[:\s]+.+$")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b", re.IGNORECASE)
 
 

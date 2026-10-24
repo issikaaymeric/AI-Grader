@@ -1,0 +1,48 @@
+"""FastAPI application factory and API router registration."""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.routes.analytics import router as analytics_router
+from app.api.routes.assignments import router as assignments_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.history import router as history_router
+from app.api.routes.markup import router as markup_router
+from app.api.routes.rubrics import router as rubrics_router
+from app.api.routes.translate import router as translate_router
+from app.core.config import settings
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="Rubric-agnostic AI assignment grader with US/UK support.",
+    version="1.1.0",
+    redirect_slashes=False,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ai-grader-bu8f19sw4-issika-aymeric-kouames-projects.vercel.app",
+        "https://ai-grader-ashen.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+)
+
+app.include_router(auth_router, prefix="/api", tags=["auth"])
+app.include_router(assignments_router, prefix="/api", tags=["assignments"])
+app.include_router(markup_router, prefix="/api", tags=["markup"])
+app.include_router(rubrics_router, prefix="/api", tags=["rubrics"])
+app.include_router(analytics_router, prefix="/api", tags=["analytics"])
+app.include_router(history_router, prefix="/api", tags=["history"])
+app.include_router(translate_router)
+
+
+@app.get("/health", tags=["ops"])
+async def health():
+    """Liveness probe used by Render and container health checks."""
+    return {"status": "ok", "service": settings.APP_NAME}
+
+
+__all__ = ["app"]
