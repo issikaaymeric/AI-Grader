@@ -33,7 +33,7 @@ class FakeQuery:
         return self
 
     def execute(self):
-        return SimpleNamespace(data=self.rows)
+        return SimpleNamespace(data=self.rows, count=self.count)
 
 
 def test_load_history_filters_by_user_and_parses_result(monkeypatch):
