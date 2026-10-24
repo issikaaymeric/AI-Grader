@@ -64,6 +64,7 @@ def test_analytics_is_scoped_to_current_user(monkeypatch):
     assert result["pending_assignments"] == 1
     assert result["failed_assignments"] == 0
     assert result["flagged_for_review"] == 1
+    assert result["scored_assignments"] == 2
     assert result["average_score"] == 89.25
     assert result["grade_distribution"] == {
         "US": {"A": 1},
@@ -84,6 +85,7 @@ def test_analytics_handles_empty_results(monkeypatch):
     assert result["pending_assignments"] == 0
     assert result["failed_assignments"] == 0
     assert result["flagged_for_review"] == 0
+    assert result["scored_assignments"] == 0
     assert result["average_score"] is None
     assert result["grade_distribution"] == {}
     assert result["status_distribution"] == {}
