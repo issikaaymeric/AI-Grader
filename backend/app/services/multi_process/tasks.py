@@ -50,14 +50,14 @@ def grade_assignment(
     Stores result in Supabase + Valkey cache on success.
     """
     from app.schemas.grading import GradingSystem, Rubric
-    from app.services.scoring.default_rubric import DEFAULT_RUBRIC
+    from app.services.scoring.subject_rubrics import get_rubric_for_subject
     from app.services.scoring.evaluator import evaluate
 
     try:
         db = get_supabase()
         db.table("assignments").update({"status": "processing"}).eq("id", assignment_id).execute()
 
-        rubric = Rubric(**rubric_dict) if rubric_dict else DEFAULT_RUBRIC
+        rubric = Rubric(**rubric_dict) if rubric_dict else get_rubric_for_subject(subject)
         system = GradingSystem(grading_system)
 
         result = evaluate(
@@ -76,6 +76,7 @@ def grade_assignment(
             {
                 "status": "done",
                 "grade": result.letter_grade,
+                "score": result.raw_score,
                 "feedback_json": result.model_dump_json(),
                 "swot_analysis": result.swot.model_dump_json(),
                 "flagged_for_review": result.flag_for_review,
@@ -89,7 +90,8 @@ def grade_assignment(
 
     except Exception as exc:
         logger.exception("grade_assignment failed for %s: %s", assignment_id, exc)
-        get_supabase().table("assignments").update(
-            {"status": "error"}
-        ).eq("id", assignment_id).execute()
+        if self.request.retries >= self.max_retries:
+            get_supabase().table("assignments").update(
+                {"status": "error"}
+            ).eq("id", assignment_id).execute()
         raise self.retry(exc=exc)
