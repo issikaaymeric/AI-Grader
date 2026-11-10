@@ -40,3 +40,20 @@ def test_call_llm_reports_exhausted_active_providers(monkeypatch):
 
     with pytest.raises(RuntimeError, match="DeepSeek, NVIDIA, Mistral, Groq"):
         llm_client.call_llm("system", "user")
+
+
+
+def test_deepseek_tries_second_key_when_first_fails(monkeypatch):
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY", "primary-key")
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY1", "secondary-key")
+    attempted = []
+
+    def deepseek_once(api_key, system, user):
+        attempted.append(api_key)
+        if api_key == "primary-key":
+            raise RuntimeError("primary key quota exceeded")
+        return ('{"summary":"ok"}', "stop")
+
+    monkeypatch.setattr(llm_client, "_deepseek_once", deepseek_once)
+    assert llm_client.call_llm("system", "user") == '{"summary":"ok"}'
+    assert attempted == ["primary-key", "secondary-key"]
