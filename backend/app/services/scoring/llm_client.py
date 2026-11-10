@@ -6,7 +6,8 @@ Provider waterfall:
   2. NVIDIA NIM
   3. Mistral
   4. Groq
-  5. GitHub Models (gpt-4o-mini, 4 096-token output cap — last resort)
+
+GitHub Models was retired in July 2026 and is intentionally not used.
 """
 
 from __future__ import annotations
@@ -25,14 +26,20 @@ MAX_OUTPUT_TOKENS = 16_384
 # ── DeepSeek ──────────────────────────────────────────────────────────────────
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL    = "deepseek-chat"
+DEEPSEEK_MODEL    = "deepseek-flash"
 
 
-def _deepseek_once(system: str, user: str) -> tuple[str, str | None]:
+def _deepseek_pool() -> list[str]:
+    """Return configured DeepSeek keys in preferred order, without exposing them."""
+    keys = [settings.DEEPSEEK_API_KEY, settings.DEEPSEEK_API_KEY1]
+    return list(dict.fromkeys(key.strip() for key in keys if key and key.strip()))
+
+
+def _deepseek_once(api_key: str, system: str, user: str) -> tuple[str, str | None]:
     from openai import OpenAI
-    if not settings.DEEPSEEK_API_KEY:
-        raise RuntimeError("DEEPSEEK_API_KEY not set")
-    client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=20.0, max_retries=0)
+    if not api_key:
+        raise RuntimeError("No DeepSeek API key configured")
+    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=25.0, max_retries=0)
     resp = client.chat.completions.create(
         model=DEEPSEEK_MODEL, temperature=0.1, max_tokens=MAX_OUTPUT_TOKENS,
         response_format={"type": "json_object"},
@@ -46,9 +53,9 @@ def _deepseek_once(system: str, user: str) -> tuple[str, str | None]:
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODELS = [
-    "meta/llama-3.3-70b-instruct",
-    "qwen/qwen2.5-72b-instruct",
-    "mistralai/mistral-large-2-instruct",
+    "openai/gpt-oss-120b",
+    "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "qwen/qwen3-next-80b-a3b-instruct",
 ]
 
 
@@ -84,7 +91,7 @@ def _mistral_pool() -> list[str]:
 
 
 def _mistral_once(api_key: str, system: str, user: str) -> tuple[str, str | None]:
-    from mistralai import Mistral
+    from mistralai.client import Mistral
 
     client = Mistral(api_key=api_key)
     resp = client.chat.complete(
@@ -109,9 +116,8 @@ def _mistral_once(api_key: str, system: str, user: str) -> tuple[str, str | None
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "gemma2-9b-it",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
 ]
 
 
@@ -126,36 +132,6 @@ def _groq_once(model: str, system: str, user: str) -> tuple[str, str | None]:
         model=model,
         temperature=0.1,
         max_tokens=MAX_OUTPUT_TOKENS,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    )
-    choice = resp.choices[0]
-    return choice.message.content, choice.finish_reason
-
-
-# ── GitHub Models (last resort — 4 096-token output cap) ─────────────────────
-
-GITHUB_MODELS_ENDPOINT = "https://models.inference.ai.azure.com"
-GITHUB_MODEL = "gpt-4o-mini"
-
-
-def _github_models_once(system: str, user: str) -> tuple[str, str | None]:
-    from openai import OpenAI
-
-    if not settings.GITHUB_MICROSOFT_MODEL_API_KEY:
-        raise RuntimeError("GITHUB_MICROSOFT_MODEL_API_KEY not set")
-
-    client = OpenAI(
-        api_key=settings.GITHUB_MICROSOFT_MODEL_API_KEY,
-        base_url=GITHUB_MODELS_ENDPOINT,
-    )
-    resp = client.chat.completions.create(
-        model=GITHUB_MODEL,
-        temperature=0.1,
-        max_tokens=4096,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
@@ -188,18 +164,20 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     """
     last_exc: Exception | None = None
 
-    # 1. DeepSeek (Primary)
-    try:
-        logger.info("Trying DeepSeek (%s)", DEEPSEEK_MODEL)
-        content, finish_reason = _deepseek_once(system_prompt, user_prompt)
-        if _was_truncated(finish_reason):
-            logger.warning("DeepSeek truncated output (finish_reason=%s), trying next provider", finish_reason)
-        else:
-            logger.info("DeepSeek succeeded (%d chars)", len(content))
+    # 1. DeepSeek key pool (primary provider)
+    deepseek_keys = _deepseek_pool()
+    for key_index, api_key in enumerate(deepseek_keys, start=1):
+        try:
+            logger.info("Trying DeepSeek key slot %d/%d (%s)", key_index, len(deepseek_keys), DEEPSEEK_MODEL)
+            content, finish_reason = _deepseek_once(api_key, system_prompt, user_prompt)
+            if _was_truncated(finish_reason):
+                logger.warning("DeepSeek key slot %d returned truncated output; trying next key/provider", key_index)
+                continue
+            logger.info("DeepSeek succeeded using key slot %d (%d chars)", key_index, len(content))
             return content
-    except Exception as exc:
-        logger.warning("DeepSeek failed: %s", exc)
-        last_exc = exc
+        except Exception as exc:
+            logger.warning("DeepSeek key slot %d failed: %s", key_index, exc)
+            last_exc = exc
 
     # 2. NVIDIA NIM
     for model in NVIDIA_MODELS:
@@ -243,22 +221,8 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
             logger.warning("Groq %s failed: %s", model, exc)
             last_exc = exc
 
-    # 5. GitHub Models (last resort — hard 4 096-token output cap)
-    try:
-        logger.info("Trying GitHub Models (%s)", GITHUB_MODEL)
-        content, finish_reason = _github_models_once(system_prompt, user_prompt)
-        if _was_truncated(finish_reason):
-            logger.warning("GitHub Models truncated (finish_reason=%s)", finish_reason)
-            # No more providers — fall through to raise below
-        else:
-            logger.info("GitHub Models succeeded (%d chars)", len(content))
-            return content
-    except Exception as exc:
-        logger.warning("GitHub Models failed: %s", exc)
-        last_exc = exc
-
     raise RuntimeError(
-        "All providers exhausted (DeepSeek, NVIDIA, Mistral, Groq, GitHub Models). "
+        "All configured AI providers exhausted (DeepSeek, NVIDIA, Mistral, Groq). "
         f"Last error: {last_exc}"
     ) from last_exc
 

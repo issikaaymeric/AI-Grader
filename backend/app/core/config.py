@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # 2. DeepSeek — OpenAI-compatible
     DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_API_KEY1: str = ""
 
     # 3. NVIDIA NIM — OpenAI-compatible, hosts Llama/Qwen/Mistral chat models
     NVIDIA_API_KEY: str = ""
@@ -45,9 +46,6 @@ class Settings(BaseSettings):
     VALKEY_URL: str = "redis://localhost:6379/0"
     CACHE_TTL_SECONDS: int = 3600
 
-    # Celery
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
     # Auth
     AUTH_ALGORITHM: str = "HS256"

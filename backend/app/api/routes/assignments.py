@@ -1,5 +1,5 @@
 """
-assignments.py — with sync fallback when Celery/Redis is unavailable.
+assignments.py — FastAPI-native background grading.
 Accepts free-text `instructions` from the instructor so the grader can
 evaluate against the actual assignment brief. Also extracts embedded
 images at upload time and describes them via Mistral vision *inside*
@@ -11,11 +11,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
@@ -112,7 +111,7 @@ def _describe_and_finalize_text(extraction: ExtractionResult) -> str:
     return sanitize_submission_text(extraction.text)
 
 
-def _grade_in_thread(
+def _grade_assignment_background(
     assignment_id: str,
     extraction: ExtractionResult,
     subject: str,
@@ -120,67 +119,36 @@ def _grade_in_thread(
     rubric_dict: dict | None,
     instructions: str | None,
 ) -> None:
-    def _run():
-        from app.schemas.grading import GradingSystem as GS, Rubric
-        from app.services.scoring.subject_rubrics import get_rubric_for_subject
-        from app.services.scoring.evaluator import evaluate
-        from app.core.cache import cache_set
+    """Run grading after the response using FastAPI BackgroundTasks."""
+    from app.schemas.grading import GradingSystem as GS, Rubric
+    from app.services.scoring.subject_rubrics import get_rubric_for_subject
+    from app.services.scoring.evaluator import evaluate
+    from app.core.cache import cache_set
 
-        db = get_supabase()
-        try:
-            db.table("assignments").update({"status": "processing"}).eq(
-                "id", assignment_id
-            ).execute()
-
-            text = _describe_and_finalize_text(extraction)
-
-            rubric = Rubric(**rubric_dict) if rubric_dict else get_rubric_for_subject(subject)
-            result = evaluate(
-                submission_text=text,
-                subject=subject,
-                grading_system=GS(grading_system),
-                rubric=rubric,
-                assignment_id=assignment_id,
-                instructions=instructions,
-            )
-
-            db.table("assignments").update({
-                "status": "done",
-                "grade": result.letter_grade,
-                "score": result.raw_score,
-                "feedback_json": result.model_dump_json(),
-                "swot_analysis": result.swot.model_dump_json(),
-                "flagged_for_review": result.flag_for_review,
-            }).eq("id", assignment_id).execute()
-
-            cache_set(f"result:{assignment_id}", result.model_dump())
-
-        except Exception as exc:
-            logger.exception("Grading failed for %s: %s", assignment_id, exc)
-            db.table("assignments").update({"status": "error"}).eq(
-                "id", assignment_id
-            ).execute()
-
-    threading.Thread(target=_run, daemon=True).start()
-
-
-def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, instructions):
+    db = get_supabase()
     try:
-        from app.services.multi_process.tasks import grade_assignment
-        grade_assignment.delay(
-            assignment_id=assignment_id,
-            submission_text=sanitize_submission_text(extraction.text),
-            images=extraction.images,
-            subject=subject,
-            grading_system=grading_system,
-            rubric_dict=rubric_dict,
-            instructions=instructions,
+        db.table("assignments").update({"status": "processing"}).eq("id", assignment_id).execute()
+        text = _describe_and_finalize_text(extraction)
+        rubric = Rubric(**rubric_dict) if rubric_dict else get_rubric_for_subject(subject)
+        result = evaluate(
+            submission_text=text, subject=subject, grading_system=GS(grading_system),
+            rubric=rubric, assignment_id=assignment_id, instructions=instructions,
         )
+        db.table("assignments").update({
+            "status": "done",
+            "grade": result.letter_grade,
+            "score": result.raw_score,
+            "feedback_json": result.model_dump_json(),
+            "swot_analysis": result.swot.model_dump_json(),
+            "flagged_for_review": result.flag_for_review,
+        }).eq("id", assignment_id).execute()
+        cache_set(f"result:{assignment_id}", result.model_dump())
     except Exception:
-        _grade_in_thread(
-            assignment_id, extraction, subject, grading_system, rubric_dict, instructions
-        )
-
+        logger.exception("Grading failed for %s", assignment_id)
+        try:
+            db.table("assignments").update({"status": "error"}).eq("id", assignment_id).execute()
+        except Exception:
+            logger.exception("Could not persist failed grading status for %s", assignment_id)
 
 def _extract_brief(content: bytes, filename: str) -> str:
     """Text of an uploaded assignment brief. Images are ignored. Blocking."""
@@ -192,6 +160,7 @@ def _extract_brief(content: bytes, filename: str) -> str:
 @router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def submit_assignment(
     request: Request,
+    background_tasks: BackgroundTasks,
     user: CurrentUser,
     file: Annotated[UploadFile, File()],
     subject: Annotated[str, Form()],
@@ -306,8 +275,9 @@ async def submit_assignment(
         },
     )
 
-    _dispatch(
-        assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions
+    background_tasks.add_task(
+        _grade_assignment_background,
+        assignment_id, extraction, subject, grading_system.value, rubric_dict, instructions,
     )
 
     return {"assignment_id": assignment_id, "status": "pending"}
