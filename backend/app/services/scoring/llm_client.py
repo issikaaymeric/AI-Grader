@@ -31,7 +31,7 @@ DEEPSEEK_MODEL    = "deepseek-flash"
 
 def _deepseek_pool() -> list[str]:
     """Return configured DeepSeek keys in preferred order, without exposing them."""
-    keys = [settings.DEEPSEEK_API_KEY, settings.DEEPSEEK_API_KEY1]
+    keys = [settings.DEEPSEEK_API_KEY, settings.DEEPSEEK_API_KEY1, settings.DEEPSEEK_API_KEY2]
     return list(dict.fromkeys(key.strip() for key in keys if key and key.strip()))
 
 
