@@ -1,7 +1,7 @@
 """
 evaluator.py
-Heart of the AI Grader.  Builds the chain-of-thought prompt, calls the LLM,
-parses structured JSON output, and assembles a GradingResult.
+Heart of the AI Grader. Builds an evidence-based grading prompt, requests
+structured JSON output, and assembles a GradingResult.
 """
 from __future__ import annotations
 
@@ -128,10 +128,11 @@ def _build_user_prompt(
 
     INSTRUCTIONS FOR YOU (the evaluator)
     -------------------------------------
-    First, check the submission against the ASSIGNMENT INSTRUCTIONS above —
-    does it actually do what was asked? Note any gaps in your chain of thought.
+    First, check the submission against the ASSIGNMENT INSTRUCTIONS above.
+    Do not reveal private chain-of-thought or hidden reasoning. Provide only
+    concise conclusions, evidence, and actionable explanations in the requested fields.
 
-    Then evaluate the submission step-by-step using chain-of-thought reasoning.
+    Then evaluate the submission against the rubric and assignment brief.
     For EACH dimension:
       1. Identify 2-4 sentences in the submission that are relevant to this dimension.
          Reference them by their [Pn, Ln] label (e.g. "[P2, L8]").
@@ -150,18 +151,17 @@ def _build_user_prompt(
         Each item should be specific to THIS submission, not generic advice.
       - Write 2-4 ranked next_steps: concrete, actionable instructions ordered
         by expected impact (highest-impact first). One sentence each.
-      - Write an anchored_feedback narrative (3-5 paragraphs) citing specific
-        passages and noting whether the assignment instructions were addressed.
+      - Write an anchored_feedback narrative (2-3 concise paragraphs) citing
+        specific passages and noting whether the assignment instructions were addressed.
 
     REQUIRED JSON SCHEMA — respond with this EXACT structure and nothing else:
     {{
-      "chain_of_thought": ["step 1 reasoning ...", "step 2 ..."],
       "summary": "One-sentence overall verdict.",
 {instructions_alignment_field}      "dimension_scores": {{
         "<dim_name>": {{
           "score": 0,
           "evidence": ["[P1, L2] quote...", "[P3, L9] quote..."],
-          "chain_of_thought": "Rationale ...",
+          "rationale": "Concise evidence-based explanation of the score.",
           "annotations": [
             {{
               "location": "P2, L8",
@@ -179,10 +179,71 @@ def _build_user_prompt(
         "threats":       ["threat 1"]
       }},
       "next_steps": ["Highest-impact action.", "Second action.", "Third action."],
-      "anchored_feedback": "3-5 paragraph narrative citing specific passages.",
+      "anchored_feedback": "2-3 concise paragraphs citing specific passages.",
       "aggregate_score": 0
     }}
     """).strip()
+
+
+
+
+def _build_response_schema(rubric: Rubric, has_instructions: bool) -> dict:
+    """Build a strict provider JSON schema for this rubric's dynamic dimensions."""
+    annotation = {
+        "type": "object",
+        "properties": {
+            "location": {"type": "string"},
+            "quote": {"type": "string"},
+            "issue": {"type": "string"},
+            "suggestion": {"type": "string"},
+        },
+        "required": ["location", "quote", "issue", "suggestion"],
+        "additionalProperties": False,
+    }
+    dimension = {
+        "type": "object",
+        "properties": {
+            "score": {"type": "number"},
+            "evidence": {"type": "array", "items": {"type": "string"}},
+            "rationale": {"type": "string"},
+            "annotations": {"type": "array", "items": annotation},
+        },
+        "required": ["score", "evidence", "rationale", "annotations"],
+        "additionalProperties": False,
+    }
+    dimension_properties = {name: dimension for name in rubric.dimensions}
+    swot = {
+        "type": "object",
+        "properties": {
+            key: {"type": "array", "items": {"type": "string"}}
+            for key in ("strengths", "weaknesses", "opportunities", "threats")
+        },
+        "required": ["strengths", "weaknesses", "opportunities", "threats"],
+        "additionalProperties": False,
+    }
+    properties = {
+        "summary": {"type": "string"},
+        "instructions_alignment": (
+            {"type": "string"} if has_instructions
+            else {"type": "null"}
+        ),
+        "dimension_scores": {
+            "type": "object",
+            "properties": dimension_properties,
+            "required": list(rubric.dimensions),
+            "additionalProperties": False,
+        },
+        "swot": swot,
+        "next_steps": {"type": "array", "items": {"type": "string"}},
+        "anchored_feedback": {"type": "string"},
+        "aggregate_score": {"type": "number"},
+    }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
 
 
 # ── Result assembly ──────────────────────────────────────────────────────────
@@ -211,7 +272,7 @@ def _assemble_result(raw_llm: dict, rubric: Rubric, system: GradingSystem, assig
             weight=weight,
             weighted_score=weighted,
             evidence=data.get("evidence", []),
-            chain_of_thought=data.get("chain_of_thought", ""),
+            chain_of_thought=data.get("rationale", ""),
             annotations=annotations,
         )
 
@@ -245,7 +306,7 @@ def _assemble_result(raw_llm: dict, rubric: Rubric, system: GradingSystem, assig
         next_steps=raw_llm.get("next_steps", []),
         instructions_alignment=raw_llm.get("instructions_alignment"),
         flag_for_review=is_borderline(final_score, system),
-        chain_of_thought=raw_llm.get("chain_of_thought", []),
+        chain_of_thought=[],
     )
 
 
@@ -283,7 +344,11 @@ def evaluate(
         assignment_id, grading_system.value, rubric.name, bool(instructions), len(user_prompt),
     )
 
-    raw_llm = call_llm_json(_SYSTEM_PROMPT, user_prompt)
+    raw_llm = call_llm_json(
+        _SYSTEM_PROMPT,
+        user_prompt,
+        json_schema=_build_response_schema(rubric, bool(instructions and instructions.strip())),
+    )
     result = _assemble_result(raw_llm, rubric, grading_system, assignment_id)
 
     logger.info(
