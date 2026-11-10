@@ -117,11 +117,13 @@ def _mistral_once(api_key: str, system: str, user: str) -> tuple[str, str | None
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
 ]
 
 
-def _groq_once(model: str, system: str, user: str) -> tuple[str, str | None]:
+def _groq_once(
+    model: str, system: str, user: str, json_schema: dict | None = None
+) -> tuple[str, str | None]:
     from openai import OpenAI
 
     if not settings.GROQ_API_KEY:
@@ -132,7 +134,18 @@ def _groq_once(model: str, system: str, user: str) -> tuple[str, str | None]:
         model=model,
         temperature=0.1,
         max_tokens=MAX_OUTPUT_TOKENS,
-        response_format={"type": "json_object"},
+        response_format=(
+            {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "grading_result",
+                    "strict": True,
+                    "schema": json_schema,
+                },
+            }
+            if json_schema
+            else {"type": "json_object"}
+        ),
         messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
@@ -156,7 +169,9 @@ def _was_truncated(finish_reason: str | None) -> bool:
 
 # ── Public interface ──────────────────────────────────────────────────────────
 
-def call_llm(system_prompt: str, user_prompt: str) -> str:
+def call_llm(
+    system_prompt: str, user_prompt: str, json_schema: dict | None = None
+) -> str:
     """
     Waterfall through providers.
     If a provider returns finish_reason='length' the output was truncated —
@@ -211,7 +226,9 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     for model in GROQ_MODELS:
         try:
             logger.info("Trying Groq model=%s", model)
-            content, finish_reason = _groq_once(model, system_prompt, user_prompt)
+            content, finish_reason = _groq_once(
+                model, system_prompt, user_prompt, json_schema=json_schema
+            )
             if _was_truncated(finish_reason):
                 logger.warning("Groq %s truncated (finish_reason=%s), trying next", model, finish_reason)
                 continue
@@ -293,8 +310,10 @@ def _looks_usable(result: dict) -> bool:
     return all(key in result and result[key] for key in _REQUIRED_TOP_LEVEL_KEYS)
 
 
-def call_llm_json(system_prompt: str, user_prompt: str) -> dict:
-    raw = call_llm(system_prompt, user_prompt)
+def call_llm_json(
+    system_prompt: str, user_prompt: str, json_schema: dict | None = None
+) -> dict:
+    raw = call_llm(system_prompt, user_prompt, json_schema=json_schema)
     cleaned = _extract_json_block(raw)
 
     try:
