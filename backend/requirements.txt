@@ -22,8 +22,7 @@ pymupdf
 PyPDF2
 python-docx
 
-# Task Queue & Cache
-celery
+# Cache
 valkey
 
 # Auth & Security
