@@ -176,7 +176,7 @@ def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, i
     """
     broker_url = (settings.CELERY_BROKER_URL or "").lower()
     local_broker = "localhost" in broker_url or "127.0.0.1" in broker_url
-    if local_broker or extraction.images:
+    if not settings.CELERY_WORKER_ENABLED or local_broker or extraction.images:
         _grade_in_thread(
             assignment_id, extraction, subject, grading_system, rubric_dict, instructions
         )
