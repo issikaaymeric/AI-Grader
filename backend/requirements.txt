@@ -12,7 +12,7 @@ supabase
 anthropic
 openai
 google-genai>=2.0.0
-mistralai
+mistralai>=2.0.0,<3.0.0
 json-repair
 tenacity
 pillow
