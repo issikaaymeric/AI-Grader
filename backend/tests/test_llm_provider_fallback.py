@@ -46,6 +46,7 @@ def test_call_llm_reports_exhausted_active_providers(monkeypatch):
 def test_deepseek_tries_second_key_when_first_fails(monkeypatch):
     monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY", "primary-key")
     monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY1", "secondary-key")
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY2", "tertiary-key")
     attempted = []
 
     def deepseek_once(api_key, system, user):
@@ -81,3 +82,28 @@ def test_call_llm_passes_strict_schema_to_groq(monkeypatch):
     assert llm_client.call_llm("system", "user", json_schema=schema)
     assert received["schema"] == schema
     assert received["model"] == "openai/gpt-oss-120b"
+
+
+
+def test_deepseek_tries_third_key_after_first_two_fail(monkeypatch):
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY", "primary-key")
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY1", "secondary-key")
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY2", "third-key")
+    attempted = []
+
+    def deepseek_once(api_key, system, user):
+        attempted.append(api_key)
+        if api_key != "third-key":
+            raise RuntimeError("key unavailable")
+        return ('{"summary":"ok"}', "stop")
+
+    monkeypatch.setattr(llm_client, "_deepseek_once", deepseek_once)
+    assert llm_client.call_llm("system", "user") == '{"summary":"ok"}'
+    assert attempted == ["primary-key", "secondary-key", "third-key"]
+
+
+def test_deepseek_pool_deduplicates_and_ignores_empty_keys(monkeypatch):
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY", "same-key")
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY1", " ")
+    monkeypatch.setattr(llm_client.settings, "DEEPSEEK_API_KEY2", "same-key")
+    assert llm_client._deepseek_pool() == ["same-key"]
