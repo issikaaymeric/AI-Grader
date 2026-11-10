@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    CELERY_WORKER_ENABLED: bool = False
 
     # Auth
     AUTH_ALGORITHM: str = "HS256"
