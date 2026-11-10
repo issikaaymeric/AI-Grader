@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # 2. DeepSeek — OpenAI-compatible
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_API_KEY1: str = ""
+    DEEPSEEK_API_KEY2: str = ""
 
     # 3. NVIDIA NIM — OpenAI-compatible, hosts Llama/Qwen/Mistral chat models
     NVIDIA_API_KEY: str = ""
