@@ -29,11 +29,17 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL    = "deepseek-flash"
 
 
-def _deepseek_once(system: str, user: str) -> tuple[str, str | None]:
+def _deepseek_pool() -> list[str]:
+    """Return configured DeepSeek keys in preferred order, without exposing them."""
+    keys = [settings.DEEPSEEK_API_KEY, settings.DEEPSEEK_API_KEY1]
+    return list(dict.fromkeys(key.strip() for key in keys if key and key.strip()))
+
+
+def _deepseek_once(api_key: str, system: str, user: str) -> tuple[str, str | None]:
     from openai import OpenAI
-    if not settings.DEEPSEEK_API_KEY:
-        raise RuntimeError("DEEPSEEK_API_KEY not set")
-    client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=25.0, max_retries=0)
+    if not api_key:
+        raise RuntimeError("No DeepSeek API key configured")
+    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=25.0, max_retries=0)
     resp = client.chat.completions.create(
         model=DEEPSEEK_MODEL, temperature=0.1, max_tokens=MAX_OUTPUT_TOKENS,
         response_format={"type": "json_object"},
@@ -158,18 +164,20 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     """
     last_exc: Exception | None = None
 
-    # 1. DeepSeek (Primary)
-    try:
-        logger.info("Trying DeepSeek (%s)", DEEPSEEK_MODEL)
-        content, finish_reason = _deepseek_once(system_prompt, user_prompt)
-        if _was_truncated(finish_reason):
-            logger.warning("DeepSeek truncated output (finish_reason=%s), trying next provider", finish_reason)
-        else:
-            logger.info("DeepSeek succeeded (%d chars)", len(content))
+    # 1. DeepSeek key pool (primary provider)
+    deepseek_keys = _deepseek_pool()
+    for key_index, api_key in enumerate(deepseek_keys, start=1):
+        try:
+            logger.info("Trying DeepSeek key slot %d/%d (%s)", key_index, len(deepseek_keys), DEEPSEEK_MODEL)
+            content, finish_reason = _deepseek_once(api_key, system_prompt, user_prompt)
+            if _was_truncated(finish_reason):
+                logger.warning("DeepSeek key slot %d returned truncated output; trying next key/provider", key_index)
+                continue
+            logger.info("DeepSeek succeeded using key slot %d (%d chars)", key_index, len(content))
             return content
-    except Exception as exc:
-        logger.warning("DeepSeek failed: %s", exc)
-        last_exc = exc
+        except Exception as exc:
+            logger.warning("DeepSeek key slot %d failed: %s", key_index, exc)
+            last_exc = exc
 
     # 2. NVIDIA NIM
     for model in NVIDIA_MODELS:
