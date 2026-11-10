@@ -20,6 +20,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.core.cache import cache_get
+from app.core.config import settings
 from app.core.dependencies import CurrentUser, get_client_ip
 from app.core.supabase import get_supabase
 from app.schemas.grading import AssignmentStatusResponse, GradingSystem
@@ -165,18 +166,34 @@ def _grade_in_thread(
 
 
 def _dispatch(assignment_id, extraction, subject, grading_system, rubric_dict, instructions):
+    """
+    Use the in-process worker unless a real external Celery broker is configured.
+
+    Render currently runs this API without a dedicated Celery worker. Its
+    default localhost broker is not a queue, and embedded images are not safe
+    to serialize through the JSON task transport. The thread path preserves
+    image descriptions and reliably completes work on the deployed service.
+    """
+    broker_url = (settings.CELERY_BROKER_URL or "").lower()
+    local_broker = "localhost" in broker_url or "127.0.0.1" in broker_url
+    if local_broker or extraction.images:
+        _grade_in_thread(
+            assignment_id, extraction, subject, grading_system, rubric_dict, instructions
+        )
+        return
+
     try:
         from app.services.multi_process.tasks import grade_assignment
         grade_assignment.delay(
             assignment_id=assignment_id,
             submission_text=sanitize_submission_text(extraction.text),
-            images=extraction.images,
             subject=subject,
             grading_system=grading_system,
             rubric_dict=rubric_dict,
             instructions=instructions,
         )
     except Exception:
+        logger.exception("Celery dispatch unavailable; using in-process grading")
         _grade_in_thread(
             assignment_id, extraction, subject, grading_system, rubric_dict, instructions
         )
